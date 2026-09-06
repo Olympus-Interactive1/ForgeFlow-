@@ -28,6 +28,8 @@ export interface ProviderContext {
 export interface Provider {
   readonly id: string;
   readonly capabilities: readonly Capability[];
+  /** Optional operation-level filter for providers that expose only part of a capability. */
+  supports?(request: ModelRequest): boolean;
   listModels?(): Promise<string[]>;
   execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse>;
 }
