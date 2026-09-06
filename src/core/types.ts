@@ -23,10 +23,13 @@ export interface ProviderContext {
   apiKey?: string;
   baseUrl?: string;
   timeoutMs?: number;
+  freeOnly?: boolean;
 }
 
 export interface Provider {
   readonly id: string;
+  /** Provider-level flag used by ForgeFlow's hard free-only policy. */
+  readonly free: boolean;
   readonly capabilities: readonly Capability[];
   /** Optional operation-level filter for providers that expose only part of a capability. */
   supports?(request: ModelRequest): boolean;
