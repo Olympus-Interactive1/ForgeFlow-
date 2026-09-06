@@ -18,6 +18,7 @@ ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect throu
 - fal.ai queue adapter
 - Local/mock provider for development
 - Dedicated image, video, audio, STT and TTS MCP tools
+- Composable ad, social-video and full-media workflows
 - Generic MCP client example
 - OpenCode remote MCP example
 - Docker and Docker Compose deployment
@@ -107,18 +108,35 @@ Provider adapters intentionally remain behind a common interface so additional p
 
 ## MCP tools
 
+### Routing
+
 - `forgeflow_route`
+
+### Image
+
 - `forgeflow_image_generate`
 - `forgeflow_image_edit`
 - `forgeflow_image_analyze`
 - `forgeflow_image_upscale`
+
+### Video
+
 - `forgeflow_video_generate`
 - `forgeflow_video_image_to_video`
 - `forgeflow_video_extend`
 - `forgeflow_video_analyze`
+
+### Audio
+
 - `forgeflow_audio_tts`
 - `forgeflow_audio_stt`
 - `forgeflow_audio_generate`
+
+### Workflows
+
+- `forgeflow_create_ad`
+- `forgeflow_social_video`
+- `forgeflow_full_media`
 
 Provider/model support is capability-dependent; a tool being present does not imply every provider implements every operation.
 
