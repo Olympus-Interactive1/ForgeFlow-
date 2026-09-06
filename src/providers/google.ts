@@ -29,11 +29,13 @@ export const googleProvider: Provider = {
     const body = await requestJson<GeminiModelsResponse>(`${base}/models?key=${encodeURIComponent(key)}`, {
       method: 'GET', timeoutMs: timeout(), headers: { 'Content-Type': 'application/json' }
     });
-    return (body.models ?? []).filter(model => model.name && model.supportedGenerationMethods?.includes('generateContent')).map(model => {
-      const id = model.name!.replace(/^models\//, '');
-      const capabilities = modelCapabilities(id);
-      return { id, capabilities, free: free.has(id), quality: capabilities.includes('video') ? 95 : capabilities.includes('image') ? 90 : 70 };
-    });
+    return (body.models ?? [])
+      .filter(model => Boolean(model.name) && Boolean(model.supportedGenerationMethods) && model.supportedGenerationMethods!.includes('generateContent'))
+      .map(model => {
+        const id = model.name!.replace(/^models\//, '');
+        const capabilities = modelCapabilities(id);
+        return { id, capabilities, free: free.has(id), quality: capabilities.includes('video') ? 95 : capabilities.includes('image') ? 90 : 70 };
+      });
   },
 
   async listModels(): Promise<string[]> {
@@ -64,7 +66,7 @@ export const googleProvider: Provider = {
       }
       const body = await requestJson<GeminiResponse>(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST', timeoutMs: context.timeoutMs ?? timeout(), headers,
-        body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseModalities: ['IMAGE'], ...(imageOptions as object) } })
+        body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseModalities: ['IMAGE'], ...imageOptions } })
       });
       const part = body.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.data || p.inline_data?.data);
       const data = part?.inlineData?.data ?? part?.inline_data?.data;
