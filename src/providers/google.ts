@@ -43,13 +43,6 @@ export const googleProvider: Provider = {
     return models.filter(model => model.free).map(model => model.id);
   },
 
-  supports(request: ModelRequest): boolean {
-    const operation = String(request.metadata?.operation ?? '');
-    if (request.capability === 'image') return operation.startsWith('image_');
-    if (request.capability === 'video') return operation === 'video_generate' || operation === 'video_image_to_video';
-    return request.capability === 'text';
-  },
-
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
     if (!context.apiKey) throw new Error('GOOGLE_API_KEY is required');
     const model = request.model ?? 'gemini-3.1-flash-lite';
