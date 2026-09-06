@@ -1,6 +1,20 @@
 export type RouteMode = 'auto' | 'free-first' | 'quality' | 'fallback';
 export type Capability = 'text' | 'image' | 'video' | 'audio' | 'stt' | 'tts' | 'embedding';
 
+export type MediaOperation =
+  | 'text_generate'
+  | 'image_generate' | 'image_edit' | 'image_analyze' | 'image_upscale'
+  | 'video_generate' | 'video_image_to_video' | 'video_extend' | 'video_analyze'
+  | 'audio_generate' | 'tts' | 'stt';
+
+export interface DiscoveredModel {
+  id: string;
+  capabilities: readonly Capability[];
+  free: boolean;
+  quality?: number;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ModelRequest {
   capability: Capability;
   model?: string;
@@ -28,11 +42,11 @@ export interface ProviderContext {
 
 export interface Provider {
   readonly id: string;
-  /** Provider-level flag used by ForgeFlow's hard free-only policy. */
+  /** Provider-level flag retained for backwards compatibility; model-level free status wins when discovered. */
   readonly free: boolean;
   readonly capabilities: readonly Capability[];
-  /** Optional operation-level filter for providers that expose only part of a capability. */
   supports?(request: ModelRequest): boolean;
   listModels?(): Promise<string[]>;
+  discoverModels?(context?: ProviderContext): Promise<DiscoveredModel[]>;
   execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse>;
 }
