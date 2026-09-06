@@ -1,6 +1,6 @@
 # ForgeFlow MCP — Getting Started
 
-ForgeFlow MCP is a provider-agnostic MCP server. Starting with v0.5.0, the default policy is **free-only**: ForgeFlow will not select a paid provider/model while `FORGEFLOW_FREE_ONLY=true`.
+ForgeFlow MCP is a provider-agnostic MCP server. Starting with v0.6.0, the default policy is **free-only**: ForgeFlow will not select a paid provider/model while `FORGEFLOW_FREE_ONLY=true`.
 
 You install ForgeFlow locally and supply your own provider API keys. ForgeFlow does not ship a shared API key and does not charge users for inference.
 
@@ -40,7 +40,7 @@ You do not need every provider. Add the keys for the providers you want to use.
 
 ### OpenRouter
 
-1. Open https://openrouter.ai/ and sign in.
+1. Open the OpenRouter website and sign in.
 2. Create an API key from your account's Keys page.
 3. Put it in `.env`:
 
@@ -48,29 +48,28 @@ You do not need every provider. Add the keys for the providers you want to use.
 OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
-ForgeFlow uses OpenRouter's free routing for eligible text workloads when no model is explicitly requested.
+ForgeFlow can query OpenRouter's model catalog and keeps models whose reported input and output pricing are both zero. When no model is explicitly requested, the normal route may use `openrouter/free`.
 
 Important: OpenRouter's free catalog changes over time. Free does not mean unlimited; provider rate limits still apply.
 
 ### Google Gemini
 
-1. Open https://aistudio.google.com/.
-2. Sign in with your Google account.
-3. Open the API key section and create a Gemini API key.
-4. Put it in `.env`:
+1. Open Google AI Studio and sign in.
+2. Create a Gemini API key.
+3. Put it in `.env`:
 
 ```env
 GOOGLE_API_KEY=your_google_key_here
+GOOGLE_FREE_MODELS=gemini-3.1-flash-lite
 ```
 
-ForgeFlow uses a currently free-tier Gemini model for the default text route. Google decides which models/features are available on its free tier and can change those limits.
+ForgeFlow verifies the configured allowlist against Google's current model catalog before reporting a model as available. Update `GOOGLE_FREE_MODELS` only with models you are entitled to use on Google's free tier.
 
 ### NVIDIA
 
-1. Open https://build.nvidia.com/.
-2. Sign in.
-3. Open an eligible free endpoint and use **Get API Key**.
-4. Put the key in `.env`:
+1. Open NVIDIA Build and sign in.
+2. Open an eligible free endpoint and use **Get API Key**.
+3. Put the key in `.env`:
 
 ```env
 NVIDIA_API_KEY=your_nvidia_key_here
@@ -80,9 +79,17 @@ NVIDIA's model catalog contains hosted free endpoints as well as downloadable/lo
 
 ### fal.ai
 
-`FAL_KEY` is intentionally **not used by the v0.5.0 free-only router**. fal.ai is a pay-as-you-go provider, so it cannot be treated as a universally free provider. The adapter remains in the repository for future paid/opt-in work, but the default policy blocks it.
+`FAL_KEY` is intentionally **not used by the v0.6.0 free-only router**. fal.ai is a pay-as-you-go provider, so it cannot be treated as a universally free provider. The adapter remains in the repository for future paid/opt-in work, but the default policy blocks it.
 
-## 5. Keep the free-only policy enabled
+## 5. Discover what is currently available
+
+ForgeFlow exposes the `forgeflow_discover` MCP tool. It checks eligible providers and returns their currently discoverable models, capabilities, and any catalog errors.
+
+This is the mechanism intended to prevent users from having to hunt through provider catalogs themselves.
+
+Paid providers are hidden from discovery while free-only mode is enabled.
+
+## 6. Keep the free-only policy enabled
 
 ```env
 FORGEFLOW_FREE_ONLY=true
@@ -93,12 +100,12 @@ With this setting:
 
 - paid providers are excluded before routing;
 - an explicit paid provider request is rejected;
-- fallback can only move to another eligible free provider;
+- automatic fallback can only move to another eligible free provider;
 - if no free provider supports an operation, ForgeFlow returns an explicit error instead of silently charging the user.
 
 Do not set `FORGEFLOW_FREE_ONLY=false` if the goal is a strictly free product.
 
-## 6. Configure an MCP host
+## 7. Configure an MCP host
 
 ### Generic stdio configuration
 
@@ -108,7 +115,7 @@ The command is:
 npx forgeflow-mcp
 ```
 
-The host must launch this command with the environment variables above available to the process.
+The host must launch this command with the provider environment variables above available to the process.
 
 ### OpenCode
 
@@ -136,7 +143,7 @@ Authorization: Bearer <your_forgeflow_server_key>
 
 The provider API keys remain server-side and are never part of MCP tool schemas.
 
-## 7. How model selection works
+## 8. How model selection works
 
 You do not need to choose a specific AI model for normal requests.
 
@@ -152,7 +159,9 @@ ForgeFlow evaluates the eligible provider pool, free-only policy, capability/ope
 
 The architecture deliberately avoids making MCP clients depend on a single model name.
 
-## 8. Media operations and the free-only rule
+Automatic modes may retry another eligible free provider after a provider failure. If you explicitly name a provider, ForgeFlow treats that as an explicit contract and does not silently switch providers.
+
+## 9. Media operations and the free-only rule
 
 ForgeFlow exposes image, video and audio tools even when a particular installation has no free model for one of those operations.
 
@@ -164,7 +173,7 @@ If no eligible free provider supports an operation, ForgeFlow fails closed with 
 
 This is especially important for image/video/audio generation because free API availability changes faster than text-model availability.
 
-## 9. Security
+## 10. Security
 
 - Keep `.env` private.
 - Never paste API keys into MCP prompts.
@@ -173,7 +182,7 @@ This is especially important for image/video/audio generation because free API a
 - For remote deployments, set `FORGEFLOW_API_KEY` and use HTTPS/reverse-proxy TLS.
 - Treat provider API keys as equivalent to passwords.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### `No free provider/model supports capability/operation`
 
