@@ -54,7 +54,7 @@ export function createForgeFlowServer() {
   server.registerTool('forgeflow_social_video', { description: 'Run a social video workflow.', inputSchema: { brief: z.string(), durationSeconds: z.number().positive().max(600).optional() } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.socialVideo(args)) }] }));
   server.registerTool('forgeflow_full_media', { description: 'Run multiple media capabilities in parallel.', inputSchema: { brief: z.string(), outputs: z.array(z.enum(['image', 'video', 'audio', 'tts'])).min(1) } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.fullMedia(args)) }] }));
 
-  server.registerResource('forgeflow://providers', 'providers', async () => ({ contents: [{ uri: 'forgeflow://providers', mimeType: 'application/json', text: JSON.stringify(registry.all().map(p => ({ id: p.id, capabilities: p.capabilities }))) }] }));
+  server.registerResource('providers', 'forgeflow://providers', { title: 'ForgeFlow Providers', mimeType: 'application/json' }, async uri => ({ contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(registry.all().map(p => ({ id: p.id, capabilities: p.capabilities }))) }] }));
   return server;
 }
 
