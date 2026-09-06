@@ -41,7 +41,7 @@ describe('MediaPipeline', () => {
     ]);
 
     expect(results).toHaveLength(2);
-    expect(route.mock.calls[1][0]).toEqual(expect.objectContaining({
+    expect(route.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       capability: 'video',
       input: 'data:image/png;base64,aGVsbG8=',
       metadata: { operation: 'video_image_to_video' },
