@@ -5,6 +5,7 @@ import * as z from 'zod/v4';
 import { ModelRouter } from './core/router.js';
 import { ProviderRegistry } from './core/provider-registry.js';
 import { falProvider, googleProvider, mockProvider, nvidiaProvider, openRouterProvider } from './providers/index.js';
+import { WorkflowEngine } from './workflows/index.js';
 import type { Capability } from './core/types.js';
 
 const registry = new ProviderRegistry().register(openRouterProvider).register(googleProvider).register(nvidiaProvider).register(falProvider).register(mockProvider);
@@ -19,6 +20,7 @@ const router = new ModelRouter({
     timeoutMs: Number(env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 60000)
   })
 });
+const workflows = new WorkflowEngine(router);
 
 async function routeTool(capability: Capability, args: { prompt?: string; input?: unknown; model?: string; provider?: string; mode?: 'auto' | 'free-first' | 'quality' | 'fallback' }) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(await router.route({ capability, ...args })) }] };
@@ -40,6 +42,10 @@ export function createForgeFlowServer() {
   server.registerTool('forgeflow_audio_tts', { description: 'Convert text to speech.', inputSchema: common }, args => routeTool('tts', args));
   server.registerTool('forgeflow_audio_stt', { description: 'Transcribe speech to text.', inputSchema: common }, args => routeTool('stt', args));
   server.registerTool('forgeflow_audio_generate', { description: 'Generate audio.', inputSchema: common }, args => routeTool('audio', args));
+
+  server.registerTool('forgeflow_create_ad', { description: 'Run an image + copy advertising workflow.', inputSchema: { brief: z.string(), imageModel: z.string().optional(), copyModel: z.string().optional() } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.createAd(args)) }] }));
+  server.registerTool('forgeflow_social_video', { description: 'Run a social video workflow.', inputSchema: { brief: z.string(), durationSeconds: z.number().positive().max(600).optional() } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.socialVideo(args)) }] }));
+  server.registerTool('forgeflow_full_media', { description: 'Run multiple media capabilities in parallel.', inputSchema: { brief: z.string(), outputs: z.array(z.enum(['image', 'video', 'audio', 'tts'])).min(1) } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.fullMedia(args)) }] }));
 
   server.registerResource('forgeflow://providers', 'providers', async () => ({ contents: [{ uri: 'forgeflow://providers', mimeType: 'application/json', text: JSON.stringify(registry.all().map(p => ({ id: p.id, capabilities: p.capabilities }))) }] }));
   return server;
