@@ -44,11 +44,12 @@ export const googleProvider: Provider = {
   },
 
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
-    if (!context.apiKey) throw new Error('GOOGLE_API_KEY is required');
+    const apiKey = context.apiKey;
+    if (!apiKey) throw new Error('GOOGLE_API_KEY is required');
     const model = request.model ?? 'gemini-3.1-flash-lite';
     const base = (context.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
     const operation = String(request.metadata?.operation ?? '');
-    const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': context.apiKey };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
 
     if (operation === 'image_generate' || operation === 'image_edit') {
       const imageOptions = (request.metadata?.imageOptions ?? {}) as Record<string, unknown>;
