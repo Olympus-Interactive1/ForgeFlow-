@@ -49,7 +49,7 @@ export class ModelRouter {
       try {
         const result = await provider.execute({ ...request, model: request.model ?? model?.id }, { ...this.contextFor(provider), freeOnly: this.freeOnly });
         this.recordSuccess(provider.id, Date.now() - started);
-        return result;
+        return result.model === (request.model ?? model?.id) ? result : { ...result, model: request.model ?? model?.id };
       } catch (error) {
         this.recordFailure(provider.id, Date.now() - started);
         lastError = error;
