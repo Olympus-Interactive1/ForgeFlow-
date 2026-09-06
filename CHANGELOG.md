@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.0 — 2026-09-07
+
+- Added provider-neutral `MediaAsset` contracts for image, video, and audio outputs.
+- Added shared media-job polling for long-running provider operations.
+- Added sequential provider-neutral media pipelines with previous-asset chaining.
+- Added operation-aware routing and pipeline capability validation.
+- Added model-level free/paid/unknown eligibility and stricter free-only routing.
+- Added canonical media output normalization for Google and NVIDIA adapters.
+- Added the MCP `forgeflow_media_pipeline` tool.
+- Added MCP protocol end-to-end tests using the official MCP v2 client over stdio.
+- Added provider media contract and free-eligibility regression tests.
+- Prevented paid model selection from bypassing `FORGEFLOW_FREE_ONLY=true`.
+- Prevented empty pricing metadata from being treated as proof of free media access.
+- Normalized provider responses without exposing reasoning-only model output as final text.
+- Preserved selected models in router responses.
+- CI passes on Node.js 20, 22 and 24 with Docker build and health smoke testing.
+
+> Free availability is provider/account dependent. ForgeFlow does not guarantee that every media operation is free at every provider and fails closed rather than silently using a paid route.
+
 ## 0.3.0 — 2026-09-06
 
 - Added operation-specific fal.ai media routing.

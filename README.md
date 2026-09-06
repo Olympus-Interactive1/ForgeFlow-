@@ -12,11 +12,9 @@
 [![Node](https://img.shields.io/badge/node-20%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/github/license/Olympus-Interactive1/ForgeFlow-?style=for-the-badge)](LICENSE)
 
-<br />
-
 **Route AI workloads across eligible providers without locking your MCP client to one vendor.**
 
-ForgeFlow is designed to work with **OpenCode, Claude, Cursor, VS Code, custom MCP clients, and any other MCP-compatible host** through stdio or Streamable HTTP.
+ForgeFlow works with **OpenCode, Claude, Cursor, VS Code, custom MCP clients, and other MCP-compatible hosts** through stdio or Streamable HTTP.
 
 </div>
 
@@ -24,39 +22,29 @@ ForgeFlow is designed to work with **OpenCode, Claude, Cursor, VS Code, custom M
 
 ## Why ForgeFlow?
 
-Most AI integrations hard-code a provider into the application. ForgeFlow puts a routing layer between the MCP client and the provider ecosystem.
+ForgeFlow places a capability-aware routing layer between an MCP client and multiple AI providers.
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                        MCP CLIENTS                          │
-│  OpenCode · Claude · Cursor · VS Code · Custom MCP Hosts    │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                       MCP / stdio / HTTP
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         FORGEFLOW                           │
-│                                                             │
-│   Tools → Capability Filter → Operation Filter → Router     │
-│                              │                              │
-│                  Health / Latency / Fallback                │
-│                              │                              │
-│                     FREE-ONLY POLICY                        │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-         OpenRouter        Google         NVIDIA
-              │              │              │
-              └──────────────┼──────────────┘
-                             ▼
-                    Eligible free model
-
-                 No silent paid fallback.
+MCP Client
+    │
+    ▼
+MCP / stdio / HTTP
+    │
+    ▼
+ForgeFlow
+    ├── Capability filter
+    ├── Operation filter
+    ├── Free-only policy
+    ├── Health + latency routing
+    ├── Media asset normalization
+    └── Provider-neutral pipelines
+    │
+    ├── OpenRouter
+    ├── Google
+    └── NVIDIA
 ```
 
-## ✦ What makes it different
+### Core properties
 
 | Capability | ForgeFlow |
 |---|:---:|
@@ -67,16 +55,18 @@ Most AI integrations hard-code a provider into the application. ForgeFlow puts a
 | Capability-aware routing | ✅ |
 | Operation-aware routing | ✅ |
 | Health-aware fallback | ✅ |
+| Media asset contract | ✅ |
+| Sequential media pipelines | ✅ |
 | Silent paid fallback | ❌ |
 | OpenCode lock-in | ❌ |
 | Docker deployment | ✅ |
 | Stdio + Streamable HTTP | ✅ |
 
-> **Core rule:** when `FORGEFLOW_FREE_ONLY=true`, ForgeFlow will never silently route a request to a paid provider. If no eligible free path exists, it fails closed.
+> **Core rule:** with `FORGEFLOW_FREE_ONLY=true`, ForgeFlow never silently routes to a paid provider/model. If no eligible free path exists, the request fails closed.
 
 ---
 
-## ⚡ Quick start
+## Quick start
 
 ### Install
 
@@ -84,13 +74,13 @@ Most AI integrations hard-code a provider into the application. ForgeFlow puts a
 npm install forgeflow-mcp
 ```
 
-Or run directly:
+Or:
 
 ```bash
 npx forgeflow-mcp
 ```
 
-### Configure your own keys
+### Configure provider keys
 
 ```env
 FORGEFLOW_FREE_ONLY=true
@@ -101,87 +91,45 @@ GOOGLE_API_KEY=
 NVIDIA_API_KEY=
 ```
 
-You do **not** need all providers configured. Add only the keys you intend to use.
+You only need to configure the providers you intend to use. API keys remain user-owned; ForgeFlow does not ship a shared inference key.
 
-> API keys belong to you. ForgeFlow does not ship a shared inference key or hide provider billing behind the MCP server.
-
-For a phone-friendly installation walkthrough, see **[GETTING_STARTED.md](GETTING_STARTED.md)**.
+See **[GETTING_STARTED.md](GETTING_STARTED.md)** for installation and MCP client configuration.
 
 ---
 
-## 🧠 Intelligent routing
+## Routing
 
-The MCP client normally does not need to know which model should handle a request.
-
-```text
-Request
-   │
-   ▼
-Capability detection
-   │
-   ▼
-Operation compatibility
-   │
-   ▼
-Free-provider filtering
-   │
-   ▼
-Health + routing mode
-   │
-   ▼
-Best eligible path
-```
-
-Available routing modes:
+ForgeFlow supports:
 
 - `auto` — balanced automatic routing
 - `free-first` — prioritize eligible free paths
 - `quality` — prioritize configured quality providers while respecting policy
-- `fallback` — resilience-oriented provider selection
+- `fallback` — resilience-oriented selection
 
-ForgeFlow also tracks provider successes, failures, consecutive failures and rolling latency. Repeated failures temporarily deprioritize an unhealthy provider.
+The router considers capability, operation metadata, model eligibility, provider health, failures and latency. Repeated provider failures temporarily reduce priority.
 
----
+### Free-only policy
 
-## 🔒 Free-only by design
+The default policy is deliberately strict:
 
-`FORGEFLOW_FREE_ONLY=true` is enabled by default.
+1. Discover compatible models.
+2. Reject known paid models.
+3. Match the requested capability and operation.
+4. Prefer eligible free paths.
+5. Avoid unhealthy providers.
+6. Execute.
+7. Fall back only to another eligible free candidate.
 
-The router applies the following sequence:
-
-1. Remove non-free providers.
-2. Match the requested capability.
-3. Match the exact operation where supported.
-4. Avoid unhealthy providers.
-5. Apply the selected routing mode.
-6. Execute the request.
-7. Fall back only to another eligible free path when allowed.
-
-If no valid free route exists:
-
-```text
-┌───────────────┐
-│ Request        │
-└───────┬───────┘
-        ▼
-  Free route?
-    /     \
-  YES      NO
-   │        │
-   ▼        ▼
-Execute   Fail closed
-          No paid fallback
-```
-
-This policy is intentionally strict. Provider free tiers and model catalogs change over time, so ForgeFlow treats free availability as **provider policy**, not a permanent guarantee for every workload.
+Provider/account free tiers can change. Free availability is therefore treated as an eligibility decision, not a permanent promise that every workload costs $0.
 
 ---
 
-## 🧩 MCP tools
+## MCP tools
 
-### Routing
+### Routing and discovery
 
 - `forgeflow_route`
+- `forgeflow_discover`
 
 ### Image
 
@@ -205,73 +153,75 @@ This policy is intentionally strict. Provider free tiers and model catalogs chan
 
 ### Workflows
 
+- `forgeflow_media_pipeline`
 - `forgeflow_create_ad`
 - `forgeflow_social_video`
 - `forgeflow_full_media`
 
-> A tool being present in the MCP contract does **not** mean that a free model exists for that operation at every provider. ForgeFlow fails closed rather than charging through a hidden fallback.
+A tool being present in the MCP contract does **not** mean that a free model exists for that operation at every provider. ForgeFlow fails closed instead of silently charging through a paid fallback.
 
 ---
 
-## 🌐 Provider layer
+## Media assets and pipelines
 
-ForgeFlow intentionally separates the MCP contract from provider implementations.
+ForgeFlow 0.8 introduces a provider-neutral `MediaAsset` contract for image, video and audio results. Providers can return either a remote URL or inline base64 data while the MCP layer receives a consistent shape.
 
-| Provider | Role | Default free-only status |
-|---|---|:---:|
-| OpenRouter | Free model routing for supported workloads | ✅ |
-| Google | Gemini free-tier routing where available | ✅ |
-| NVIDIA | Hosted free endpoints where supported by the adapter | ✅ |
-| fal.ai | Provider adapter retained for abstraction/future use | 🚫 blocked |
+Pipelines can chain assets between operations:
 
-### fal.ai
-
-fal.ai remains implemented as an adapter, but it is **not treated as a free provider**. Its normal model APIs are usage-priced, so v0.5.0 excludes it while free-only mode is enabled.
-
----
-
-## 🏗️ Architecture
-
-```mermaid
-flowchart TB
-    A[MCP Clients] --> B[MCP Transport]
-    B --> C[ForgeFlow Core]
-    C --> D[Capability Filter]
-    D --> E[Operation Filter]
-    E --> F[Free-only Policy]
-    F --> G[Health-aware Router]
-    G --> H[OpenRouter]
-    G --> I[Google]
-    G --> J[NVIDIA]
-    H --> K[Eligible Free Model]
-    I --> K
-    J --> K
-    G -. blocked by default .-> L[fal.ai]
+```text
+image_generate
+      │
+      ▼
+MediaAsset
+      │
+      ▼
+video_image_to_video
+      │
+      ▼
+MediaAsset
 ```
 
-### Runtime layers
+`forgeflow_media_pipeline` validates operation/capability compatibility before execution and can feed the previous media asset into the next step.
+
+Long-running provider jobs use a shared polling abstraction with timeout and cancellation handling.
+
+---
+
+## Provider layer
+
+| Provider | Role | Free-only default |
+|---|---|:---:|
+| OpenRouter | Free model routing for supported workloads | ✅ |
+| Google | Gemini/Veo free-tier routing where eligible | ✅ |
+| NVIDIA | Hosted endpoints supported by the adapter | ✅ |
+| fal.ai | Adapter retained for abstraction/future use | 🚫 blocked |
+
+`fal.ai` is intentionally blocked while free-only mode is enabled because its normal model APIs are usage-priced.
+
+---
+
+## Architecture
 
 ```text
 ForgeFlow MCP
 ├── MCP Core
 │   ├── Tools
-│   ├── Resources
-│   └── Prompts
+│   └── Resources
 ├── Model Router
-│   ├── auto
-│   ├── free-first
-│   ├── quality
-│   └── fallback
+│   ├── Capability selection
+│   ├── Operation selection
+│   ├── Free eligibility
+│   └── Health-aware fallback
+├── Media Contracts
+│   ├── MediaAsset
+│   ├── MediaJob
+│   └── MediaPipeline
 ├── Providers
 │   ├── Google
 │   ├── OpenRouter
 │   ├── NVIDIA
 │   ├── fal.ai adapter
-│   └── Local / Mock
-├── Media Contracts
-│   ├── Image
-│   ├── Video
-│   └── Audio
+│   └── Mock
 └── Deployment
     ├── Stdio
     ├── Streamable HTTP
@@ -280,11 +230,9 @@ ForgeFlow MCP
 
 ---
 
-## 🔌 MCP configuration
+## MCP configuration
 
-ForgeFlow is not an OpenCode plugin. It is a normal MCP server.
-
-Example host configuration:
+ForgeFlow is a normal MCP server, not an OpenCode plugin.
 
 ```json
 {
@@ -302,13 +250,11 @@ Example host configuration:
 }
 ```
 
-A ready example is available at [`examples/opencode.jsonc`](examples/opencode.jsonc). The same server architecture can be used from other MCP-compatible clients.
+The same server contract can be used by any MCP-compatible client.
 
 ---
 
-## ☁️ Streamable HTTP
-
-Start the HTTP server:
+## Streamable HTTP
 
 ```bash
 cp .env.example .env
@@ -327,27 +273,21 @@ Optional server authentication:
 FORGEFLOW_API_KEY=change-me
 ```
 
-Then send:
-
-```http
-Authorization: Bearer <your-server-key>
-```
-
-The HTTP server also provides `/health`, rate limiting and request-size protection.
+The HTTP server also exposes `/health`, rate limiting and request-size protection.
 
 ---
 
-## 🐳 Docker
+## Docker
 
 ```bash
 docker compose up --build -d
 ```
 
-The container is configured with a non-root runtime user, a read-only filesystem, restricted Linux capabilities and a health check.
+The container uses a non-root runtime user, restricted Linux capabilities, a read-only filesystem and a health check.
 
 ---
 
-## 🛠️ Development
+## Development
 
 ```bash
 npm install
@@ -356,33 +296,25 @@ npm test
 npm run build
 ```
 
-CI validates:
-
-- Node.js 20
-- Node.js 22
-- Node.js 24
-- Docker build
-- Docker health smoke test
-
-Publishing is handled through the GitHub Actions release workflow.
+CI validates Node.js 20, 22 and 24 plus Docker build and health smoke testing. The test suite includes MCP wire-level end-to-end coverage using a deterministic mock provider, so CI does not require external API keys.
 
 ---
 
-## 📦 Project status
+## Project status
 
-**Current release: `v0.5.0`**
+**Current release: `v0.8.0`**
 
-This release establishes the free-only routing foundation, provider abstraction, health-aware routing and MCP deployment surfaces.
+0.8.0 establishes the provider-neutral media asset layer, long-running media-job abstraction, operation-aware pipelines, stricter free eligibility, normalized Google/NVIDIA media outputs and MCP protocol end-to-end coverage.
 
-The media tool contracts are present, but free media capability depends on the provider adapters and the availability of eligible free endpoints. ForgeFlow will not substitute a paid endpoint silently.
+Live provider/account eligibility still depends on the provider and credentials configured by the user. ForgeFlow does not guarantee free access to every media workload.
 
 ---
 
-## 🔐 Security
+## Security
 
 - Never commit `.env` files.
 - Never put provider API keys into prompts or MCP tool arguments.
-- Rotate any exposed provider key immediately.
+- Rotate exposed provider keys immediately.
 - Use TLS/reverse-proxy protection for public HTTP deployments.
 - Keep `FORGEFLOW_FREE_ONLY=true` for a strict no-paid-fallback policy.
 
@@ -390,14 +322,13 @@ See [`SECURITY.md`](SECURITY.md).
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - [Getting Started](GETTING_STARTED.md)
+- [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md)
 - [License](LICENSE)
 - [Latest Release](https://github.com/Olympus-Interactive1/ForgeFlow-/releases/latest)
-
----
 
 <div align="center">
 
@@ -405,6 +336,6 @@ See [`SECURITY.md`](SECURITY.md).
 
 **One MCP interface. Multiple providers. No forced vendor lock-in.**
 
-[GitHub](https://github.com/Olympus-Interactive1/ForgeFlow-) · [Releases](https://github.com/Olympus-Interactive1/ForgeFlow-/releases) · [npm](https://www.npmjs.com/package/forgeflow-mcp)
+[GitHub](https://github.com/Olympus-Interactive1/ForgeFlow-) · [Releases](https://github.com/Olympus-Interactive1/ForgeFlow/) · [npm](https://www.npmjs.com/package/forgeflow-mcp)
 
 </div>
