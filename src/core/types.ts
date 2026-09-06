@@ -1,3 +1,5 @@
+import type { MediaAsset } from './media-asset.js';
+
 export type RouteMode = 'auto' | 'free-first' | 'quality' | 'fallback';
 export type Capability = 'text' | 'image' | 'video' | 'audio' | 'stt' | 'tts' | 'embedding';
 export type ModelEligibility = 'free' | 'paid' | 'unknown';
@@ -34,6 +36,8 @@ export interface ModelResponse<T = unknown> {
   output: T;
   provider: string;
   model?: string;
+  /** Canonical media representation for image/video/audio responses. */
+  asset?: MediaAsset;
   usage?: Record<string, number>;
   metadata?: Record<string, unknown>;
 }
