@@ -43,7 +43,7 @@ export function createForgeFlowServer() {
   };
   const mediaCommon = { ...common, metadata: z.record(z.string(), z.unknown()).optional() };
 
-  server.registerTool('forgeflow_discover', { description: 'Discover currently available free provider models and capabilities. Paid providers are hidden by the default free-only policy.', inputSchema: {} }, async () => ({ content: [{ type: 'text', text: JSON.stringify(await discoverProviders(registry.all(), freeOnly)) }] }));
+  server.registerTool('forgeflow_discover', { description: 'Discover currently available free provider models and capabilities. Paid providers are hidden by the default free-only policy.', inputSchema: z.object({}) }, async () => ({ content: [{ type: 'text' as const, text: JSON.stringify(await discoverProviders(registry.all(), freeOnly)) }] }));
   server.registerTool('forgeflow_route', { description: 'Route a supported request through ForgeFlow. v0.6.0 uses free providers/models only by default.', inputSchema: { capability: z.enum(['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding']), ...common } }, async args => routeTool(args.capability, args));
   server.registerTool('forgeflow_image_generate', { description: 'Generate an image with a free-capable provider. Fails clearly if no free image generator is configured.', inputSchema: common }, args => routeTool('image', { ...args, metadata: { ...args.metadata, operation: 'image_generate' } }));
   server.registerTool('forgeflow_image_edit', { description: 'Edit an image with a free-capable provider.', inputSchema: common }, args => routeTool('image', { ...args, metadata: { ...args.metadata, operation: 'image_edit' } }));
