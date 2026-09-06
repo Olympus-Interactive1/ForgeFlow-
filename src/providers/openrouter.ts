@@ -55,7 +55,7 @@ export const openRouterProvider: Provider = {
     if (!apiKey) throw new Error('OPENROUTER_API_KEY is required');
     const base = (context.baseUrl ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
     const model = request.model ?? 'openrouter/free';
-    const operation = String(request.metadata?.operation ?? '');
+    const operation = typeof request.metadata?.operation === 'string' ? request.metadata.operation : '';
     const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
 
     if (operation === 'image_generate' || operation === 'image_edit') {
