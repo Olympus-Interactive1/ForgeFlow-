@@ -10,7 +10,7 @@ import { falProvider, googleProvider, mockProvider, nvidiaProvider, openRouterPr
 import { WorkflowEngine } from './workflows/index.js';
 import type { Capability, MediaOperation } from './core/types.js';
 
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 const registry = new ProviderRegistry().register(openRouterProvider).register(googleProvider).register(nvidiaProvider).register(falProvider).register(mockProvider);
 const env = process.env;
 const freeOnly = env.FORGEFLOW_FREE_ONLY !== 'false';
