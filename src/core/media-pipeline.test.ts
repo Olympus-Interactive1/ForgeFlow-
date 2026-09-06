@@ -29,6 +29,15 @@ describe('MediaPipeline', () => {
     }));
   });
 
+  it('rejects an operation with the wrong capability', async () => {
+    const route = vi.fn();
+    const pipeline = new MediaPipeline({ route } as never);
+
+    await expect(pipeline.run({ capability: 'text', operation: 'image_generate', prompt: 'test' }))
+      .rejects.toThrow('requires image capability');
+    expect(route).not.toHaveBeenCalled();
+  });
+
   it('chains the previous asset as a data URL', async () => {
     const route = vi.fn()
       .mockResolvedValueOnce(response(image, image))
