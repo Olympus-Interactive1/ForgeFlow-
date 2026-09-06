@@ -9,6 +9,7 @@ interface GeminiModelsResponse { models?: GeminiModel[]; }
 interface GoogleOperation { name?: string; done?: boolean; error?: { message?: string }; response?: { generateVideoResponse?: { generatedSamples?: Array<{ video?: { uri?: string } }> } }; }
 
 const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000);
+const mediaJobTimeout = () => Number(process.env.FORGEFLOW_MEDIA_JOB_TIMEOUT_MS ?? 10 * 60_000);
 const configuredFree = () => new Set((process.env.GOOGLE_FREE_MODELS ?? 'gemini-3.1-flash-lite').split(',').map(s => s.trim()).filter(Boolean));
 const modelCapabilities = (id: string): DiscoveredModel['capabilities'] => {
   const name = id.toLowerCase();
@@ -91,7 +92,7 @@ export const googleProvider: Provider = {
           error: status.error?.message,
         };
       }, {
-        timeoutMs: context.timeoutMs ?? timeout(),
+        timeoutMs: mediaJobTimeout(),
         intervalMs: Number(process.env.FORGEFLOW_MEDIA_JOB_POLL_MS ?? 3000),
       });
 
