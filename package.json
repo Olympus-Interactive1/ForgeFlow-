@@ -1,15 +1,35 @@
 {
   "name": "forgeflow-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Universal, provider-agnostic MCP server and AI media orchestration layer.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": { "forgeflow-mcp": "dist/index.js" },
   "files": ["dist", "README.md", "LICENSE"],
-  "scripts": { "build": "tsc", "dev": "tsx src/index.ts", "start": "node dist/index.js", "test": "vitest run", "test:watch": "vitest", "lint": "tsc --noEmit", "prepublishOnly": "npm run build" },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/http.ts",
+    "start": "node dist/index.js",
+    "start:http": "node dist/http.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
   "engines": { "node": ">=20" },
-  "dependencies": { "@modelcontextprotocol/server": "2.0.0", "zod": "^4.0.0" },
-  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.0.0", "typescript": "^6.0.0", "vitest": "^3.0.0" },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.0",
+    "vitest": "^3.2.0"
+  },
+  "publishConfig": { "access": "public" },
   "license": "MIT"
 }
