@@ -1,10 +1,43 @@
 import { describe, expect, it } from 'vitest';
+import type { Capability, ModelRequest, Provider } from '../src/core/types.js';
+import { falProvider } from '../src/providers/fal.js';
+
+const capabilities: Capability[] = ['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding'];
+
+function fakeProvider(id: string, supported: Capability[]): Provider {
+  return {
+    id,
+    capabilities: supported,
+    async execute(request: ModelRequest) {
+      return { output: request.input, provider: id };
+    },
+  };
+}
 
 describe('v0.4 provider contract', () => {
-  it('has a deterministic operation-to-capability vocabulary', () => {
-    const operations = ['image_generate', 'image_edit', 'image_analyze', 'image_upscale', 'video_generate', 'video_image_to_video', 'video_extend', 'video_analyze', 'tts', 'stt', 'audio_generate'];
-    expect(new Set(operations).size).toBe(operations.length);
-    expect(operations).toContain('video_image_to_video');
-    expect(operations).toContain('video_extend');
+  it('keeps the capability vocabulary unique and stable', () => {
+    expect(new Set(capabilities).size).toBe(capabilities.length);
+    expect(capabilities).toContain('stt');
+    expect(capabilities).toContain('tts');
+  });
+
+  it('allows providers to expose only the capabilities they implement', () => {
+    const provider = fakeProvider('example', ['text', 'image']);
+    expect(provider.capabilities).toEqual(['text', 'image']);
+    expect(provider.capabilities).not.toContain('video');
+  });
+
+  it('declares fal media capabilities explicitly', () => {
+    expect(falProvider.id).toBe('fal');
+    expect(falProvider.capabilities).toEqual(['image', 'video', 'audio', 'stt', 'tts']);
+  });
+
+  it('keeps operation metadata separate from the generic capability vocabulary', () => {
+    const request: ModelRequest = {
+      capability: 'video',
+      metadata: { operation: 'video_image_to_video' },
+    };
+    expect(request.capability).toBe('video');
+    expect(request.metadata?.operation).toBe('video_image_to_video');
   });
 });
