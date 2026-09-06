@@ -32,12 +32,24 @@ describe('v0.4 provider contract', () => {
     expect(falProvider.capabilities).toEqual(['image', 'video', 'audio', 'stt', 'tts']);
   });
 
-  it('keeps operation metadata separate from the generic capability vocabulary', () => {
-    const request: ModelRequest = {
-      capability: 'video',
-      metadata: { operation: 'video_image_to_video' },
-    };
-    expect(request.capability).toBe('video');
-    expect(request.metadata?.operation).toBe('video_image_to_video');
+  it('filters unsupported analyze operations instead of treating them as generation', () => {
+    expect(falProvider.supports?.({ capability: 'image', metadata: { operation: 'image_analyze' } })).toBe(false);
+    expect(falProvider.supports?.({ capability: 'video', metadata: { operation: 'video_analyze' } })).toBe(false);
+  });
+
+  it('accepts each supported dedicated fal operation', () => {
+    const operations = [
+      'image_generate', 'image_edit', 'image_upscale',
+      'video_generate', 'video_image_to_video', 'video_extend',
+      'audio_generate', 'tts', 'stt',
+    ];
+    for (const operation of operations) {
+      const capability = operation.startsWith('image_') ? 'image'
+        : operation.startsWith('video_') ? 'video'
+        : operation === 'tts' ? 'tts'
+        : operation === 'stt' ? 'stt'
+        : 'audio';
+      expect(falProvider.supports?.({ capability, metadata: { operation } })).toBe(true);
+    }
   });
 });
