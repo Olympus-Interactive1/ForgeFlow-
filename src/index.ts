@@ -5,14 +5,9 @@ import * as z from 'zod/v4';
 import { ModelRouter } from './core/router.js';
 import { ProviderRegistry } from './core/provider-registry.js';
 import { falProvider, googleProvider, mockProvider, nvidiaProvider, openRouterProvider } from './providers/index.js';
+import type { Capability } from './core/types.js';
 
-const registry = new ProviderRegistry()
-  .register(openRouterProvider)
-  .register(googleProvider)
-  .register(nvidiaProvider)
-  .register(falProvider)
-  .register(mockProvider);
-
+const registry = new ProviderRegistry().register(openRouterProvider).register(googleProvider).register(nvidiaProvider).register(falProvider).register(mockProvider);
 const env = process.env;
 const router = new ModelRouter({
   providers: registry.all(),
@@ -25,23 +20,29 @@ const router = new ModelRouter({
   })
 });
 
+async function routeTool(capability: Capability, args: { prompt?: string; input?: unknown; model?: string; provider?: string; mode?: 'auto' | 'free-first' | 'quality' | 'fallback' }) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(await router.route({ capability, ...args })) }] };
+}
+
 export function createForgeFlowServer() {
   const server = new McpServer({ name: 'forgeflow-mcp', version: '0.2.0' });
-  server.registerTool('forgeflow_route', {
-    description: 'Route a text or media request through ForgeFlow providers.',
-    inputSchema: {
-      capability: z.enum(['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding']),
-      prompt: z.string().optional(), input: z.unknown().optional(), model: z.string().optional(), provider: z.string().optional(),
-      mode: z.enum(['auto', 'free-first', 'quality', 'fallback']).optional()
-    }
-  }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await router.route(args)) }] }));
+  const common = { prompt: z.string().optional(), input: z.unknown().optional(), model: z.string().optional(), provider: z.string().optional(), mode: z.enum(['auto', 'free-first', 'quality', 'fallback']).optional() };
 
-  server.registerResource('forgeflow://providers', 'providers', async () => ({
-    contents: [{ uri: 'forgeflow://providers', mimeType: 'application/json', text: JSON.stringify(registry.all().map(p => ({ id: p.id, capabilities: p.capabilities }))) }]
-  }));
+  server.registerTool('forgeflow_route', { description: 'Route any supported request through ForgeFlow.', inputSchema: { capability: z.enum(['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding']), ...common } }, async args => routeTool(args.capability, args));
+  server.registerTool('forgeflow_image_generate', { description: 'Generate an image.', inputSchema: common }, args => routeTool('image', args));
+  server.registerTool('forgeflow_image_edit', { description: 'Edit an image using provider-specific input.', inputSchema: common }, args => routeTool('image', args));
+  server.registerTool('forgeflow_image_analyze', { description: 'Analyze an image.', inputSchema: common }, args => routeTool('image', { ...args, prompt: args.prompt ?? 'Analyze the supplied image.' }));
+  server.registerTool('forgeflow_image_upscale', { description: 'Upscale an image.', inputSchema: common }, args => routeTool('image', { ...args, prompt: args.prompt ?? 'Upscale the supplied image.' }));
+  server.registerTool('forgeflow_video_generate', { description: 'Generate a video.', inputSchema: common }, args => routeTool('video', args));
+  server.registerTool('forgeflow_video_image_to_video', { description: 'Generate video from an image.', inputSchema: common }, args => routeTool('video', args));
+  server.registerTool('forgeflow_video_extend', { description: 'Extend an existing video.', inputSchema: common }, args => routeTool('video', args));
+  server.registerTool('forgeflow_video_analyze', { description: 'Analyze a video.', inputSchema: common }, args => routeTool('video', args));
+  server.registerTool('forgeflow_audio_tts', { description: 'Convert text to speech.', inputSchema: common }, args => routeTool('tts', args));
+  server.registerTool('forgeflow_audio_stt', { description: 'Transcribe speech to text.', inputSchema: common }, args => routeTool('stt', args));
+  server.registerTool('forgeflow_audio_generate', { description: 'Generate audio.', inputSchema: common }, args => routeTool('audio', args));
+
+  server.registerResource('forgeflow://providers', 'providers', async () => ({ contents: [{ uri: 'forgeflow://providers', mimeType: 'application/json', text: JSON.stringify(registry.all().map(p => ({ id: p.id, capabilities: p.capabilities }))) }] }));
   return server;
 }
 
-if (process.argv[1]?.endsWith('index.js') || process.argv[1]?.endsWith('index.ts')) {
-  await serveStdio(() => createForgeFlowServer());
-}
+if (process.argv[1]?.endsWith('index.js') || process.argv[1]?.endsWith('index.ts')) await serveStdio(() => createForgeFlowServer());
