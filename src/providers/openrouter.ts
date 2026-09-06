@@ -22,7 +22,7 @@ export const openRouterProvider: Provider = {
     const key = context?.apiKey ?? process.env.OPENROUTER_API_KEY;
     if (!key) return [{ id: 'openrouter/free', capabilities: ['text'], free: true, quality: 60 }];
     const base = (context?.baseUrl ?? process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
-    const headers = { Authorization: `Bearer ${key}`, 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
+    const headers: Record<string, string> = { Authorization: `Bearer ${key}`, 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
     const [catalog, images, videos] = await Promise.all([
       requestJson<OpenRouterModelsResponse>(`${base}/models`, { method: 'GET', timeoutMs: timeout(), headers }),
       requestJson<{ data?: Array<{ id?: string; pricing_skus?: Record<string, string> }> }>(`${base}/images/models`, { method: 'GET', timeoutMs: timeout(), headers }).catch(() => ({ data: [] })),
@@ -51,11 +51,12 @@ export const openRouterProvider: Provider = {
   },
 
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
-    if (!context.apiKey) throw new Error('OPENROUTER_API_KEY is required');
+    const apiKey = context.apiKey;
+    if (!apiKey) throw new Error('OPENROUTER_API_KEY is required');
     const base = (context.baseUrl ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
     const model = request.model ?? 'openrouter/free';
     const operation = String(request.metadata?.operation ?? '');
-    const headers = { Authorization: `Bearer ${context.apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
+    const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
 
     if (operation === 'image_generate' || operation === 'image_edit') {
       const imageOptions = (request.metadata?.imageOptions ?? {}) as Record<string, unknown>;
