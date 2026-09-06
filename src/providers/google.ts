@@ -1,4 +1,5 @@
 import type { DiscoveredModel, ModelRequest, ModelResponse, Provider, ProviderContext } from '../core/types.js';
+import { pollMediaJob } from '../core/media-job.js';
 import { requestBytes, requestJson } from '../core/http.js';
 
 interface GeminiPart { text?: string; inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string }; }
@@ -8,6 +9,7 @@ interface GeminiModelsResponse { models?: GeminiModel[]; }
 interface GoogleOperation { name?: string; done?: boolean; error?: { message?: string }; response?: { generateVideoResponse?: { generatedSamples?: Array<{ video?: { uri?: string } }> } }; }
 
 const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000);
+const mediaJobTimeout = () => Number(process.env.FORGEFLOW_MEDIA_JOB_TIMEOUT_MS ?? 10 * 60_000);
 const configuredFree = () => new Set((process.env.GOOGLE_FREE_MODELS ?? 'gemini-3.1-flash-lite').split(',').map(s => s.trim()).filter(Boolean));
 const modelCapabilities = (id: string): DiscoveredModel['capabilities'] => {
   const name = id.toLowerCase();
@@ -75,14 +77,27 @@ export const googleProvider: Provider = {
         body: JSON.stringify({ instances: [instance], parameters: videoOptions })
       });
       if (!operationResult.name) throw new Error(operationResult.error?.message ?? 'Google video operation was not created');
-      let status = operationResult;
-      for (let attempt = 0; attempt < 90; attempt++) {
-        if (status.done) break;
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        status = await requestJson<GoogleOperation>(`${base}/${operationResult.name}`, { method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers });
-      }
-      if (!status.done) throw new Error('Google video generation timed out');
-      if (status.error) throw new Error(status.error.message ?? 'Google video generation failed');
+
+      const completed = await pollMediaJob<GoogleOperation>(async () => {
+        const status = await requestJson<GoogleOperation>(`${base}/${operationResult.name}`, {
+          method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers
+        });
+        return {
+          id: operationResult.name!,
+          provider: 'google',
+          status: status.error ? 'failed' : status.done ? 'completed' : 'running',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          result: status,
+          error: status.error?.message,
+        };
+      }, {
+        timeoutMs: mediaJobTimeout(),
+        intervalMs: Number(process.env.FORGEFLOW_MEDIA_JOB_POLL_MS ?? 3000),
+      });
+
+      const status = completed.result;
+      if (!status) throw new Error('Google video operation completed without a response');
       const uri = status.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
       if (!uri) throw new Error('Google video model returned no video');
       const video = await requestBytes(uri, { method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers });
