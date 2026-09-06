@@ -38,11 +38,6 @@ export const googleProvider: Provider = {
       });
   },
 
-  async listModels(): Promise<string[]> {
-    const models = await this.discoverModels({ apiKey: process.env.GOOGLE_API_KEY });
-    return models.filter(model => model.free).map(model => model.id);
-  },
-
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
     const apiKey = context.apiKey;
     if (!apiKey) throw new Error('GOOGLE_API_KEY is required');
