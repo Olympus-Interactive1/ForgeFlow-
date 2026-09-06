@@ -1,5 +1,6 @@
 export type RouteMode = 'auto' | 'free-first' | 'quality' | 'fallback';
 export type Capability = 'text' | 'image' | 'video' | 'audio' | 'stt' | 'tts' | 'embedding';
+export type ModelEligibility = 'free' | 'paid' | 'unknown';
 
 export type MediaOperation =
   | 'text_generate'
@@ -10,7 +11,11 @@ export type MediaOperation =
 export interface DiscoveredModel {
   id: string;
   capabilities: readonly Capability[];
+  /** Conservative model-level free flag. In free-only mode, only true is eligible. */
   free: boolean;
+  /** Optional richer eligibility classification for providers with incomplete pricing metadata. */
+  eligibility?: ModelEligibility;
+  eligibilityReason?: string;
   quality?: number;
   metadata?: Record<string, unknown>;
 }
