@@ -29,6 +29,10 @@ export async function pollMediaJob<T>(
       throw new Error("Media job polling aborted");
     }
 
+    if (Date.now() - startedAt >= timeoutMs) {
+      throw new Error(`Media job polling timed out after ${timeoutMs}ms`);
+    }
+
     const job = await getJob();
 
     if (job.status === "completed") return job;
@@ -44,11 +48,20 @@ export async function pollMediaJob<T>(
     }
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, intervalMs);
-      options.signal?.addEventListener("abort", () => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        settled = true;
+        options.signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, intervalMs);
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
         reject(new Error("Media job polling aborted"));
-      }, { once: true });
+      };
+      options.signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 }
