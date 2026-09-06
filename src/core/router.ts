@@ -79,9 +79,9 @@ export class ModelRouter {
       models = await provider.discoverModels(context);
     } else if (provider.listModels) {
       const ids = await provider.listModels();
-      models = ids.map(id => ({ id, capabilities: provider.capabilities, free: provider.free }));
+      models = ids.map(id => ({ id, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'free' : 'paid' }));
     } else {
-      models = [{ id: `${provider.id}:default`, capabilities: provider.capabilities, free: provider.free }];
+      models = [{ id: `${provider.id}:default`, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'free' : 'paid' }];
     }
     this.discoveryCache.set(provider.id, { expiresAt: Date.now() + this.discoveryTtlMs, models });
     return models;
@@ -92,18 +92,20 @@ export class ModelRouter {
     const candidates: Candidate[] = [];
     for (const provider of this.providers) {
       if (request.provider && provider.id !== request.provider) continue;
-      if (this.freeOnly && !provider.free) continue;
       if (!provider.capabilities.includes(request.capability)) continue;
       if (!(provider.supports?.(request) ?? true)) continue;
       try {
         const models = await this.discover(provider);
-        const compatible = models.filter(model => model.capabilities.includes(request.capability) && (!this.freeOnly || model.free) && (!request.model || model.id === request.model));
+        const compatible = models.filter(model => model.capabilities.includes(request.capability)
+          && (!this.freeOnly || (model.free && model.eligibility !== 'paid'))
+          && (!request.model || model.id === request.model));
         for (const model of compatible) candidates.push({ provider, model });
-        if (compatible.length === 0 && request.model && provider.capabilities.includes(request.capability)) {
-          candidates.push({ provider, model: { id: request.model, capabilities: provider.capabilities, free: provider.free } });
-        }
       } catch {
-        if (!request.model) candidates.push({ provider });
+        if (!this.freeOnly || provider.free) {
+          candidates.push(request.model
+            ? { provider, model: { id: request.model, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'unknown' : 'paid' } }
+            : { provider });
+        }
       }
     }
     candidates.sort((a, b) => {
