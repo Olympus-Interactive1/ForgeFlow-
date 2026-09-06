@@ -1,4 +1,4 @@
-import type { Capability, DiscoveredModel, Provider } from './types.js';
+import type { Capability, DiscoveredModel, ModelEligibility, Provider } from './types.js';
 
 export interface DiscoveredProvider {
   id: string;
@@ -15,11 +15,21 @@ export async function discoverProviders(providers: Provider[], freeOnly: boolean
   return Promise.all(providers.map(async provider => {
     const discoveredAt = new Date().toISOString();
     try {
-      const discoveredModels = provider.discoverModels
+      const discoveredModels: DiscoveredModel[] = provider.discoverModels
         ? await provider.discoverModels({ freeOnly })
         : (provider.listModels
-          ? (await provider.listModels()).map(id => ({ id, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'free' : 'paid' }))
-          : [{ id: `${provider.id}:default`, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'free' : 'paid' }]);
+          ? (await provider.listModels()).map(id => ({
+              id,
+              capabilities: provider.capabilities,
+              free: provider.free,
+              eligibility: (provider.free ? 'free' : 'paid') as ModelEligibility
+            }))
+          : [{
+              id: `${provider.id}:default`,
+              capabilities: provider.capabilities,
+              free: provider.free,
+              eligibility: (provider.free ? 'free' : 'paid') as ModelEligibility
+            }]);
       const eligibleModels = freeOnly ? discoveredModels.filter(model => model.free && model.eligibility !== 'paid') : discoveredModels;
       return {
         id: provider.id,
