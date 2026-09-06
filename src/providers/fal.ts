@@ -23,24 +23,16 @@ const DEFAULT_MODELS: Record<Operation, string> = {
 
 const SUPPORTED_OPERATIONS = new Set<Operation>(Object.keys(DEFAULT_MODELS) as Operation[]);
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-function metadataOf(request: ModelRequest): Record<string, unknown> {
-  return request.metadata ?? {};
-}
-
+function metadataOf(request: ModelRequest): Record<string, unknown> { return request.metadata ?? {}; }
 function operationOf(request: ModelRequest): Operation {
   const operation = metadataOf(request).operation;
   if (typeof operation === 'string' && operation in DEFAULT_MODELS) return operation as Operation;
   switch (request.capability) {
-    case 'tts': return 'tts';
-    case 'stt': return 'stt';
-    case 'audio': return 'audio_generate';
-    case 'video': return 'video_generate';
-    case 'image': return 'image_generate';
+    case 'tts': return 'tts'; case 'stt': return 'stt'; case 'audio': return 'audio_generate';
+    case 'video': return 'video_generate'; case 'image': return 'image_generate';
     default: throw new Error(`fal does not implement capability ${request.capability}`);
   }
 }
-
 function buildInput(request: ModelRequest, operation: Operation): Record<string, unknown> {
   const source = typeof request.input === 'object' && request.input ? request.input as Record<string, unknown> : {};
   const input = { ...source };
@@ -53,33 +45,19 @@ function buildInput(request: ModelRequest, operation: Operation): Record<string,
   if (operation === 'video_extend' && input.video_url === undefined && typeof source.url === 'string') input.video_url = source.url;
   return input;
 }
-
-function mediaFile(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
-}
-
+function mediaFile(value: unknown): Record<string, unknown> | undefined { return value && typeof value === 'object' ? value as Record<string, unknown> : undefined; }
 function normalizeResult(result: unknown, requestId: string, operation: Operation): Record<string, unknown> {
   const object = result && typeof result === 'object' ? result as Record<string, unknown> : {};
-  const mediaCandidates: unknown[] = [
-    object.image, object.video, object.audio, object.file,
-    ...(Array.isArray(object.images) ? object.images : []),
-    ...(Array.isArray(object.videos) ? object.videos : []),
-    ...(Array.isArray(object.audio_files) ? object.audio_files : [])
-  ];
+  const mediaCandidates: unknown[] = [object.image, object.video, object.audio, object.file, ...(Array.isArray(object.images) ? object.images : []), ...(Array.isArray(object.videos) ? object.videos : []), ...(Array.isArray(object.audio_files) ? object.audio_files : [])];
   const media = mediaCandidates.map(mediaFile).find(Boolean);
-  const url = typeof media?.url === 'string' ? media.url :
-    typeof object.audio === 'string' ? object.audio :
-    typeof object.url === 'string' ? object.url : undefined;
+  const url = typeof media?.url === 'string' ? media.url : typeof object.audio === 'string' ? object.audio : typeof object.url === 'string' ? object.url : undefined;
   const mimeType = typeof media?.content_type === 'string' ? media.content_type : undefined;
-
-  return {
-    requestId, operation, status: 'completed',
-    ...(url ? { url } : {}), ...(mimeType ? { mimeType } : {}), result
-  };
+  return { requestId, operation, status: 'completed', ...(url ? { url } : {}), ...(mimeType ? { mimeType } : {}), result };
 }
 
 export const falProvider: Provider = {
   id: 'fal',
+  free: false,
   capabilities: ['image', 'video', 'audio', 'stt', 'tts'],
   supports(request) {
     const operation = metadataOf(request).operation;
@@ -87,48 +65,28 @@ export const falProvider: Provider = {
     return ['image', 'video', 'audio', 'stt', 'tts'].includes(request.capability);
   },
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
+    if (context.freeOnly) throw new Error('fal.ai is pay-as-you-go and is disabled by ForgeFlow free-only policy');
     if (!context.apiKey) throw new Error('FAL_KEY is required');
-
     const operation = operationOf(request);
     const model = request.model ?? DEFAULT_MODELS[operation];
     const base = (context.baseUrl ?? 'https://queue.fal.run').replace(/\/$/, '');
     const headers = { Authorization: `Key ${context.apiKey}`, 'Content-Type': 'application/json' };
     const input = buildInput(request, operation);
     const metadata = metadataOf(request);
-
-    const submitted = await requestJson<FalSubmit>(`${base}/${model}`, {
-      method: 'POST', timeoutMs: context.timeoutMs, headers, body: JSON.stringify(input)
-    });
-
+    const submitted = await requestJson<FalSubmit>(`${base}/${model}`, { method: 'POST', timeoutMs: context.timeoutMs, headers, body: JSON.stringify(input) });
     const wait = metadata.waitForResult !== false;
-    if (!wait) {
-      return { output: { requestId: submitted.request_id, status: 'queued', operation, model }, provider: 'fal', model,
-        metadata: { requestId: submitted.request_id, operation, status: 'queued' } };
-    }
-
-    const maxWaitMs = Number(metadata.maxWaitMs ?? 300_000);
-    const pollMs = Number(metadata.pollIntervalMs ?? 1_500);
-    const deadline = Date.now() + maxWaitMs;
-    let lastStatus = 'IN_QUEUE';
-
+    if (!wait) return { output: { requestId: submitted.request_id, status: 'queued', operation, model }, provider: 'fal', model, metadata: { requestId: submitted.request_id, operation, status: 'queued' } };
+    const maxWaitMs = Number(metadata.maxWaitMs ?? 300_000); const pollMs = Number(metadata.pollIntervalMs ?? 1_500); const deadline = Date.now() + maxWaitMs; let lastStatus = 'IN_QUEUE';
     while (Date.now() < deadline) {
-      const status = await requestJson<FalStatus>(`${base}/${model}/requests/${submitted.request_id}/status`, {
-        method: 'GET', timeoutMs: Math.min(context.timeoutMs ?? 60_000, 15_000), headers
-      });
+      const status = await requestJson<FalStatus>(`${base}/${model}/requests/${submitted.request_id}/status`, { method: 'GET', timeoutMs: Math.min(context.timeoutMs ?? 60_000, 15_000), headers });
       lastStatus = status.status;
       if (status.status === 'COMPLETED') {
-        const result = await requestJson<unknown>(`${base}/${model}/requests/${submitted.request_id}`, {
-          method: 'GET', timeoutMs: context.timeoutMs, headers
-        });
-        return { output: normalizeResult(result, submitted.request_id, operation), provider: 'fal', model,
-          metadata: { requestId: submitted.request_id, operation, status: status.status } };
+        const result = await requestJson<unknown>(`${base}/${model}/requests/${submitted.request_id}`, { method: 'GET', timeoutMs: context.timeoutMs, headers });
+        return { output: normalizeResult(result, submitted.request_id, operation), provider: 'fal', model, metadata: { requestId: submitted.request_id, operation, status: status.status } };
       }
       if (status.status === 'FAILED' || status.status === 'CANCELLED') throw new Error(`fal request ${submitted.request_id} ended with status ${status.status}`);
       await sleep(pollMs);
     }
-
-    return { output: { requestId: submitted.request_id, status: lastStatus, operation, model }, provider: 'fal', model,
-      metadata: { requestId: submitted.request_id, operation, pending: true, timedOut: true,
-        pollUrl: `${base}/${model}/requests/${submitted.request_id}/status` } };
+    return { output: { requestId: submitted.request_id, status: lastStatus, operation, model }, provider: 'fal', model, metadata: { requestId: submitted.request_id, operation, pending: true, timedOut: true, pollUrl: `${base}/${model}/requests/${submitted.request_id}/status` } };
   }
 };

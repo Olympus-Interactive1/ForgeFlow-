@@ -7,6 +7,7 @@ const capabilities: Capability[] = ['text', 'image', 'video', 'audio', 'stt', 't
 function fakeProvider(id: string, supported: Capability[]): Provider {
   return {
     id,
+    free: true,
     capabilities: supported,
     async execute(request: ModelRequest) {
       return { output: request.input, provider: id };
@@ -29,6 +30,7 @@ describe('v0.4 provider contract', () => {
 
   it('declares fal media capabilities explicitly', () => {
     expect(falProvider.id).toBe('fal');
+    expect(falProvider.free).toBe(false);
     expect(falProvider.capabilities).toEqual(['image', 'video', 'audio', 'stt', 'tts']);
   });
 

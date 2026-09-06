@@ -4,6 +4,7 @@ import type { Provider } from '../src/core/types.js';
 
 const provider = (id: string): Provider => ({
   id,
+  free: id === 'free' || id === 'text',
   capabilities: ['text'],
   async execute(request) { return { output: request.prompt ?? '', provider: id }; }
 });

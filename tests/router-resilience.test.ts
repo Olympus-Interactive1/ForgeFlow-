@@ -4,12 +4,14 @@ import type { Provider } from '../src/core/types.js';
 
 const failing = (id: string): Provider => ({
   id,
+  free: true,
   capabilities: ['text'],
   async execute() { throw new Error(`${id} failed`); }
 });
 
 const succeeding = (id: string): Provider => ({
   id,
+  free: true,
   capabilities: ['text'],
   async execute(request) { return { output: request.prompt ?? '', provider: id }; }
 });
