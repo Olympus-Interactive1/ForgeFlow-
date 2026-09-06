@@ -1,63 +1,60 @@
-# ForgeFlow
+# ForgeFlow MCP
 
 Universal, provider-agnostic MCP server and AI media orchestration layer.
 
-ForgeFlow is designed around the Model Context Protocol rather than a specific AI host. OpenCode can use it, but OpenCode is not a dependency. The same server can be integrated with other MCP-compatible hosts or a custom client.
+ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect through stdio or remote Streamable HTTP. The MCP TypeScript SDK v2 is the current stable SDK line and supports servers, clients, stdio, and Streamable HTTP. citeturn0search0turn0search10
 
-## Stack
+## What is included
 
-- Node.js 20+
-- TypeScript / ESM
-- MCP TypeScript SDK v2 (`@modelcontextprotocol/server`)
-- Zod 4
-- Vitest
+- MCP SDK v2 server
+- Stdio transport
+- Stateless Streamable HTTP transport
+- Optional Bearer API-key authentication
+- Provider registry and model router
+- `auto`, `free-first`, `quality`, and `fallback` routing modes
+- OpenRouter adapter
+- Google adapter
+- NVIDIA NIM adapter
+- fal.ai queue adapter
+- Local/mock provider for development
+- Dedicated image, video, audio, STT and TTS MCP tools
+- Generic MCP client example
+- OpenCode remote MCP example
+- Docker and Docker Compose deployment
+- GitHub Actions CI
+- npm publish workflow
+- TypeScript declarations
 
 ## Architecture
 
 ```text
-MCP Host / Client
-       |
-       v
-MCP Core (tools / resources / prompts)
-       |
-       v
-Model Router
-(auto / free-first / quality / fallback)
-       |
-       v
-Provider Registry
-       |
-       +--> Google
-       +--> OpenRouter
-       +--> NVIDIA
-       +--> fal.ai
-       +--> Local
-       +--> Future providers
+MCP Host
+  │
+  ├── stdio ───────────────┐
+  └── Streamable HTTP ─────┤
+                           ▼
+                    ForgeFlow MCP Core
+                           │
+                    ┌──────┴──────┐
+                    │ Model Router │
+                    └──────┬──────┘
+                           │
+             ┌─────────────┼─────────────┐
+             ▼             ▼             ▼
+         Providers      Media Tools   Workflows
+             │
+   ┌─────────┼──────────┬─────────┐
+   ▼         ▼          ▼         ▼
+OpenRouter Google     NVIDIA     fal.ai
 ```
 
-Media capabilities are modeled independently from providers:
+## Install
 
-- Image: generate, edit, analyze, upscale
-- Video: generate, image-to-video, extend, analyze
-- Audio: generation, TTS, STT
-- Workflows: ad creation, social video, full media
-
-## Repository layout
-
-```text
-src/
-  core/          provider contracts, registry, routing
-  media/         image/video/audio/STT/TTS contracts
-  providers/     provider adapters
-  workflows/     composable media workflows
-  index.ts       MCP stdio entrypoint
-
-tests/           automated tests
-docs/            architecture and integrations
-.github/         CI and contribution templates
+```bash
+npm install forgeflow-mcp
 ```
 
-## Quick start
+Or run directly from source:
 
 ```bash
 npm install
@@ -65,63 +62,99 @@ npm run build
 npm start
 ```
 
-For development:
+## Stdio
+
+MCP hosts that launch local processes can execute:
 
 ```bash
-npm run dev
+npx forgeflow-mcp
 ```
 
-The current server exposes a minimal `forgeflow_route` MCP tool and a reference mock provider. Real provider adapters are intentionally separated from the core and will be added incrementally.
-
-## Configuration
-
-Copy `.env.example` to `.env` and configure only the provider credentials you need. Never commit `.env` or API keys.
-
-## Generic MCP configuration
-
-A host that supports local stdio MCP servers can launch ForgeFlow with a command equivalent to:
-
-```json
-{
-  "mcpServers": {
-    "forgeflow": {
-      "command": "npx",
-      "args": ["forgeflow-mcp"]
-    }
-  }
-}
-```
-
-Host configuration formats vary. See `docs/INTEGRATIONS.md` for integration rules and the OpenCode example.
-
-## Development quality gates
+## Streamable HTTP
 
 ```bash
+cp .env.example .env
+npm run dev:http
+```
+
+The MCP endpoint defaults to `http://localhost:8787/mcp` and the health endpoint is `/health`.
+
+The HTTP server is stateless by design. The MCP SDK v2 provides a Node Streamable HTTP transport with explicit stateless and stateful modes; ForgeFlow currently uses stateless mode so each HTTP request is independently handled. citeturn0search1
+
+## Authentication
+
+Set `FORGEFLOW_API_KEY` to require:
+
+```http
+Authorization: Bearer <key>
+```
+
+Do not commit `.env` or provider credentials.
+
+## Provider configuration
+
+Copy `.env.example` to `.env` and configure the providers you intend to use.
+
+| Provider | Environment variable | Capabilities |
+|---|---|---|
+| OpenRouter | `OPENROUTER_API_KEY` | text |
+| Google | `GOOGLE_API_KEY` | text/image/video routing surface |
+| NVIDIA | `NVIDIA_API_KEY` | text |
+| fal.ai | `FAL_KEY` | image/video/audio |
+| Mock | none | development |
+
+Provider adapters intentionally remain behind a common interface so additional providers can be added without changing MCP tool contracts.
+
+## MCP tools
+
+- `forgeflow_route`
+- `forgeflow_image_generate`
+- `forgeflow_image_edit`
+- `forgeflow_image_analyze`
+- `forgeflow_image_upscale`
+- `forgeflow_video_generate`
+- `forgeflow_video_image_to_video`
+- `forgeflow_video_extend`
+- `forgeflow_video_analyze`
+- `forgeflow_audio_tts`
+- `forgeflow_audio_stt`
+- `forgeflow_audio_generate`
+
+Provider/model support is capability-dependent; a tool being present does not imply every provider implements every operation.
+
+## OpenCode
+
+See [`examples/opencode.jsonc`](examples/opencode.jsonc).
+
+OpenCode supports both local MCP processes and remote MCP servers; its remote configuration uses a URL and optional HTTP headers. citeturn0search3turn0search14
+
+## Generic MCP client
+
+See [`examples/mcp-client.ts`](examples/mcp-client.ts). The official MCP client SDK uses `StreamableHTTPClientTransport` for HTTP connections. citeturn0search7
+
+## Docker
+
+```bash
+docker compose up --build -d
+```
+
+## Development
+
+```bash
+npm install
 npm run lint
 npm test
 npm run build
 ```
 
-GitHub Actions runs these checks on Node 20, 22, and 24.
+## Routing
 
-## Roadmap
+`auto` chooses the normal provider order. `free-first` prioritizes providers configured in `FORGEFLOW_FREE_PROVIDERS`. `quality` prioritizes `FORGEFLOW_QUALITY_PROVIDERS`. `fallback` and `auto` continue to the next candidate when a provider fails.
 
-- [x] MCP v2 server foundation
-- [x] Provider abstraction and registry
-- [x] Routing modes
-- [x] Media/workflow interfaces
-- [x] CI and repository governance
-- [ ] Google adapter
-- [ ] OpenRouter adapter
-- [ ] NVIDIA adapter
-- [ ] fal.ai adapter
-- [ ] Local provider adapter
-- [ ] Streamable HTTP deployment
-- [ ] Authentication and authorization layer
-- [ ] Persistent routing/cost telemetry
-- [ ] NPM release automation
-- [ ] Full integration test suite
+## Security
+
+See [`SECURITY.md`](SECURITY.md). API keys are read from environment variables and are never part of the MCP tool schema.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [`LICENSE`](LICENSE).
