@@ -1,12 +1,12 @@
 {
   "name": "forgeflow-mcp",
-  "version": "0.4.0",
-  "description": "Universal, provider-agnostic MCP server and AI media orchestration layer.",
+  "version": "0.5.0",
+  "description": "Universal, provider-agnostic MCP server and free-first AI media orchestration layer.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": { "forgeflow-mcp": "dist/index.js" },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": ["dist", "README.md", "GETTING_STARTED.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
