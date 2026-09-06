@@ -50,9 +50,10 @@ export function normalizeMediaAsset(value: unknown, kind: MediaAssetKind, mimeTy
   if (!value || typeof value !== 'object') throw new Error('Media provider returned an invalid asset');
   const input = value as Record<string, unknown>;
   const resolvedMimeType = typeof input.mimeType === 'string' ? input.mimeType : mimeType;
+  if (!resolvedMimeType) throw new Error(`Media provider did not return a MIME type for ${kind}`);
   const asset: MediaAsset = {
     kind,
-    mimeType: resolvedMimeType ?? `${kind}/octet-stream`,
+    mimeType: resolvedMimeType,
     url: typeof input.url === 'string' ? input.url : undefined,
     data: typeof input.data === 'string' ? input.data : undefined,
     filename: typeof input.filename === 'string' ? input.filename : undefined,
