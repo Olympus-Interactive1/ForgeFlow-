@@ -15,6 +15,17 @@ interface VideoJob { id?: string; status?: string; polling_url?: string; unsigne
 const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000);
 const freePrice = (value?: string) => value === '0' || value === '0.0' || value === '0.00';
 const allPricesFree = (prices: Record<string, string> | undefined) => { const values = Object.values(prices ?? {}); return values.length > 0 && values.every(freePrice); };
+const trustedFreeMediaModels = () => new Set((process.env.FORGEFLOW_TRUSTED_FREE_MEDIA_MODELS ?? '').split(',').map(value => value.trim()).filter(Boolean));
+
+/**
+ * OpenRouter's media pricing catalog is not sufficient proof of account-level
+ * free access: image/video requests may still require purchased credits.
+ * Free-only routing therefore requires an explicit trusted model allowlist.
+ */
+export function isVerifiedFreeMediaModel(modelId: string, pricingSkus?: Record<string, string>): boolean {
+  if (trustedFreeMediaModels().has(modelId)) return true;
+  return false;
+}
 
 export const openRouterProvider: Provider = {
   id: 'openrouter', free: true, capabilities: ['text', 'image', 'video'],
@@ -37,8 +48,14 @@ export const openRouterProvider: Provider = {
       const free = freePrice(model.pricing?.prompt) && freePrice(model.pricing?.completion);
       if (capabilities.length) result.push({ id: model.id, capabilities: capabilities as DiscoveredModel['capabilities'], free, quality: free ? 60 : 75 });
     }
-    for (const model of images.data ?? []) if (model.id) { const free = allPricesFree(model.pricing_skus); result.push({ id: model.id, capabilities: ['image'], free, quality: 85, metadata: { endpoint: 'images', eligibility: free ? 'free' : 'paid', eligibilityReason: free ? 'all-discovered-prices-are-zero' : 'provider-requires-or-may-require-credits' } }); }
-    for (const model of videos.data ?? []) if (model.id) { const free = allPricesFree(model.pricing_skus); result.push({ id: model.id, capabilities: ['video'], free, quality: 90, metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [], eligibility: free ? 'free' : 'paid', eligibilityReason: free ? 'all-discovered-prices-are-zero' : 'provider-requires-or-may-require-credits' } }); }
+    for (const model of images.data ?? []) if (model.id) {
+      const verifiedFree = isVerifiedFreeMediaModel(model.id, model.pricing_skus);
+      result.push({ id: model.id, capabilities: ['image'], free: verifiedFree, quality: 85, eligibility: verifiedFree ? 'free' : 'unknown', metadata: { endpoint: 'images', eligibility: verifiedFree ? 'free' : 'unknown', eligibilityReason: verifiedFree ? 'explicitly-trusted-free-media-model' : 'OpenRouter media pricing metadata does not prove account-level credit-free access' } });
+    }
+    for (const model of videos.data ?? []) if (model.id) {
+      const verifiedFree = isVerifiedFreeMediaModel(model.id, model.pricing_skus);
+      result.push({ id: model.id, capabilities: ['video'], free: verifiedFree, quality: 90, eligibility: verifiedFree ? 'free' : 'unknown', metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [], eligibility: verifiedFree ? 'free' : 'unknown', eligibilityReason: verifiedFree ? 'explicitly-trusted-free-media-model' : 'OpenRouter media pricing metadata does not prove account-level credit-free access' } });
+    }
     return result;
   },
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
@@ -51,7 +68,7 @@ export const openRouterProvider: Provider = {
       const body = await requestJson<ImageResponse>(`${base}/images`, { method: 'POST', timeoutMs: context.timeoutMs ?? timeout(), headers, body: JSON.stringify({ model, prompt: request.prompt ?? String(request.input ?? ''), ...imageOptions }) });
       const item = body.data?.[0]; if (!item?.b64_json && !item?.url) throw new Error('OpenRouter image API returned no image');
       const asset = normalizeMediaAsset(item.b64_json ? { data: item.b64_json, mimeType: item.media_type ?? 'image/png' } : { url: item.url, mimeType: item.media_type ?? 'image/png' }, 'image');
-      return { output: asset, asset, provider: 'openrouter', model, metadata: { free: false, endpoint: 'images' } };
+      return { output: asset, asset, provider: 'openrouter', model, metadata: { free: isVerifiedFreeMediaModel(model), endpoint: 'images' } };
     }
     if (operation === 'video_generate' || operation === 'video_image_to_video') {
       const options = (request.metadata?.videoOptions ?? {}) as Record<string, unknown>, body: Record<string, unknown> = { model, prompt: request.prompt ?? String(request.input ?? ''), ...options };
@@ -64,7 +81,7 @@ export const openRouterProvider: Provider = {
       if (status.status !== 'completed') throw new Error('OpenRouter video generation timed out');
       const content = await requestBytes(`${base}/videos/${encodeURIComponent(job.id)}/content?index=0`, { method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers });
       const asset = normalizeMediaAsset({ data: Buffer.from(content.bytes).toString('base64'), mimeType: content.contentType ?? 'video/mp4' }, 'video');
-      return { output: asset, asset, provider: 'openrouter', model, usage: status.usage, metadata: { free: false, endpoint: 'videos' } };
+      return { output: asset, asset, provider: 'openrouter', model, usage: status.usage, metadata: { free: isVerifiedFreeMediaModel(model), endpoint: 'videos' } };
     }
     const body = await requestJson<OpenRouterResponse>(`${base}/chat/completions`, { method: 'POST', timeoutMs: context.timeoutMs, headers, body: JSON.stringify({ model, messages: [{ role: 'user', content: request.prompt ?? String(request.input ?? '') }] }) });
     const message = body.choices?.[0]?.message, output = extractTextContent(message?.content);
