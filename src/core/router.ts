@@ -41,17 +41,13 @@ export class ModelRouter {
   async route(request: ModelRequest): Promise<ModelResponse> {
     const mode: RouteMode = request.mode ?? 'free-first';
     const candidates = await this.select(request, mode);
-    if (candidates.length === 0) {
-      throw new Error(`No compatible ${request.capability} model is available under the current policy`);
-    }
+    if (candidates.length === 0) throw new Error(`No compatible ${request.capability} model is available under the current policy`);
     let lastError: unknown;
     for (const candidate of candidates) {
       const { provider, model } = candidate;
       const started = Date.now();
       try {
-        const result = await provider.execute({ ...request, model: request.model ?? model?.id }, {
-          ...this.contextFor(provider), freeOnly: this.freeOnly
-        });
+        const result = await provider.execute({ ...request, model: request.model ?? model?.id }, { ...this.contextFor(provider), freeOnly: this.freeOnly });
         this.recordSuccess(provider.id, Date.now() - started);
         return result;
       } catch (error) {
@@ -81,9 +77,11 @@ export class ModelRouter {
     let models: DiscoveredModel[];
     if (provider.discoverModels) {
       models = await provider.discoverModels(context);
-    } else {
-      const ids = provider.listModels ? await provider.listModels() : [];
+    } else if (provider.listModels) {
+      const ids = await provider.listModels();
       models = ids.map(id => ({ id, capabilities: provider.capabilities, free: provider.free }));
+    } else {
+      models = [{ id: `${provider.id}:default`, capabilities: provider.capabilities, free: provider.free }];
     }
     this.discoveryCache.set(provider.id, { expiresAt: Date.now() + this.discoveryTtlMs, models });
     return models;
@@ -99,22 +97,15 @@ export class ModelRouter {
       if (!(provider.supports?.(request) ?? true)) continue;
       try {
         const models = await this.discover(provider);
-        const compatible = models.filter(model =>
-          model.capabilities.includes(request.capability) &&
-          (!this.freeOnly || model.free) &&
-          (!request.model || model.id === request.model)
-        );
+        const compatible = models.filter(model => model.capabilities.includes(request.capability) && (!this.freeOnly || model.free) && (!request.model || model.id === request.model));
         for (const model of compatible) candidates.push({ provider, model });
         if (compatible.length === 0 && request.model && provider.capabilities.includes(request.capability)) {
-          // Explicit model selection is allowed even when discovery cannot describe that model.
           candidates.push({ provider, model: { id: request.model, capabilities: provider.capabilities, free: provider.free } });
         }
       } catch {
-        // Discovery is advisory; a provider can still be used when its catalog endpoint is unavailable.
         if (!request.model) candidates.push({ provider });
       }
     }
-
     candidates.sort((a, b) => {
       const ah = this.health.get(a.provider.id)!;
       const bh = this.health.get(b.provider.id)!;
