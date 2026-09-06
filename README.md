@@ -95,12 +95,12 @@ Do not commit `.env` or provider credentials.
 
 Copy `.env.example` to `.env` and configure the providers you intend to use.
 
-| Provider | Environment variable | Capabilities |
+| Provider | Environment variable | Implemented capability |
 |---|---|---|
 | OpenRouter | `OPENROUTER_API_KEY` | text |
-| Google | `GOOGLE_API_KEY` | text/image/video routing surface |
+| Google | `GOOGLE_API_KEY` | text |
 | NVIDIA | `NVIDIA_API_KEY` | text |
-| fal.ai | `FAL_KEY` | image/video/audio |
+| fal.ai | `FAL_KEY` | image/video/audio queue submission |
 | Mock | none | development |
 
 Provider adapters intentionally remain behind a common interface so additional providers can be added without changing MCP tool contracts.
