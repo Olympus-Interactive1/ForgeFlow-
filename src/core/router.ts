@@ -34,7 +34,7 @@ export class ModelRouter {
   async route(request: ModelRequest): Promise<ModelResponse> {
     const mode: RouteMode = request.mode ?? 'auto';
     const candidates = this.select(request, mode);
-    if (candidates.length === 0) throw new Error(`No provider supports capability: ${request.capability}`);
+    if (candidates.length === 0) throw new Error(`No provider supports capability/operation: ${request.capability}`);
     let lastError: unknown;
 
     for (const provider of candidates) {
@@ -79,7 +79,7 @@ export class ModelRouter {
   }
 
   private select(request: ModelRequest, mode: RouteMode): Provider[] {
-    let candidates = this.providers.filter(p => p.capabilities.includes(request.capability));
+    let candidates = this.providers.filter(p => p.capabilities.includes(request.capability) && (p.supports?.(request) ?? true));
     if (request.provider) candidates = candidates.filter(p => p.id === request.provider);
     const now = Date.now();
     candidates.sort((a, b) => {
