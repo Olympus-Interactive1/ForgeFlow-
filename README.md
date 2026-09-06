@@ -17,7 +17,7 @@ ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect throu
 - OpenRouter adapter
 - Google adapter
 - NVIDIA NIM adapter
-- fal.ai queue adapter with optional polling/result retrieval
+- fal.ai media adapter with operation-specific models and queue polling/result retrieval
 - Local/mock provider for development
 - Dedicated image, video, audio, STT and TTS MCP tools
 - Composable ad, social-video and full-media workflows
@@ -113,10 +113,30 @@ Copy `.env.example` to `.env` and configure the providers you intend to use.
 | OpenRouter | `OPENROUTER_API_KEY` | text |
 | Google | `GOOGLE_API_KEY` | text |
 | NVIDIA | `NVIDIA_API_KEY` | text |
-| fal.ai | `FAL_KEY` | image/video/audio queue submission + optional polling |
+| fal.ai | `FAL_KEY` | image, video, audio, TTS, STT |
 | Mock | none | development |
 
 Provider adapters intentionally remain behind a common interface so additional providers can be added without changing MCP tool contracts.
+
+## fal.ai media operations
+
+When `fal` is selected, ForgeFlow maps each dedicated media tool to an operation-specific model by default:
+
+| Tool | Default fal.ai model |
+|---|---|
+| `forgeflow_image_generate` | `fal-ai/z-image/base` |
+| `forgeflow_image_edit` | `fal-ai/playground-v25/image-to-image` |
+| `forgeflow_image_upscale` | `fal-ai/esrgan` |
+| `forgeflow_video_generate` | `fal-ai/ltx-2.3/text-to-video` |
+| `forgeflow_video_image_to_video` | `fal-ai/kling-video/v3/standard/image-to-video` |
+| `forgeflow_video_extend` | `fal-ai/ltx-2.3/extend-video` |
+| `forgeflow_audio_generate` | `fal-ai/stable-audio-25/text-to-audio` |
+| `forgeflow_audio_tts` | `fal-ai/chatterbox/text-to-speech` |
+| `forgeflow_audio_stt` | `fal-ai/speech-to-text` |
+
+You can override the model per request with the `model` argument. For asynchronous operation, set `metadata.waitForResult` to `false`; otherwise ForgeFlow polls the queue and returns a normalized result containing the request ID and media URL when available.
+
+Input files should be supplied as provider-compatible public URLs or data URIs. ForgeFlow does not expose provider API keys to MCP clients.
 
 ## MCP tools
 
