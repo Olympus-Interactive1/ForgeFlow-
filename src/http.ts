@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { NodeStreamableHTTPServerTransport } from '@modelcontextprotocol/node';
 import { createForgeFlowServer, getForgeFlowHealth } from './index.js';
 
@@ -9,9 +9,10 @@ const apiKey = process.env.FORGEFLOW_API_KEY;
 const endpoint = process.env.FORGEFLOW_MCP_PATH ?? '/mcp';
 const rateLimit = Number(process.env.FORGEFLOW_RATE_LIMIT ?? 60);
 const rateWindowMs = Number(process.env.FORGEFLOW_RATE_WINDOW_MS ?? 60_000);
+const maxBodyBytes = Number(process.env.FORGEFLOW_MAX_BODY_BYTES ?? 2_097_152);
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
-function clientKey(req: import('node:http').IncomingMessage): string {
+function clientKey(req: IncomingMessage): string {
   if (apiKey) return req.headers.authorization ?? 'anonymous';
   const forwarded = req.headers['x-forwarded-for']?.toString();
   return forwarded?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
@@ -27,6 +28,17 @@ function rateLimited(key: string): boolean {
   }
   current.count += 1;
   return current.count > rateLimit;
+}
+
+function rejectLargeBody(req: IncomingMessage, res: ServerResponse): boolean {
+  const length = Number(req.headers['content-length'] ?? 0);
+  if (Number.isFinite(length) && length > maxBodyBytes) {
+    res.writeHead(413, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Request body too large' }));
+    req.resume();
+    return true;
+  }
+  return false;
 }
 
 setInterval(() => {
@@ -46,6 +58,7 @@ const httpServer = createServer(async (req, res) => {
     res.end(JSON.stringify({ error: 'Unauthorized' }));
     return;
   }
+  if (rejectLargeBody(req, res)) return;
   const key = clientKey(req);
   if (rateLimited(key)) {
     res.writeHead(429, { 'content-type': 'application/json', 'retry-after': String(Math.ceil(rateWindowMs / 1000)) });
@@ -58,9 +71,17 @@ const httpServer = createServer(async (req, res) => {
     await server.connect(transport);
     await transport.handleRequest(req, res);
   } catch (error) {
+    console.error('ForgeFlow request error:', error instanceof Error ? error.message : String(error));
     if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
-    if (!res.writableEnded) res.end(JSON.stringify({ error: String(error) }));
+    if (!res.writableEnded) res.end(JSON.stringify({ error: 'Internal server error' }));
   }
 });
+
+const shutdown = async (signal: string) => {
+  console.error(`ForgeFlow received ${signal}; shutting down.`);
+  await new Promise<void>(resolve => httpServer.close(() => resolve()));
+};
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));
 
 httpServer.listen(port, host, () => console.error(`ForgeFlow MCP listening on http://${host}:${port}${endpoint}`));
