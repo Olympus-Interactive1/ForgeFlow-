@@ -45,11 +45,6 @@ export const openRouterProvider: Provider = {
     return result;
   },
 
-  async listModels(): Promise<string[]> {
-    const models = await this.discoverModels({ apiKey: process.env.OPENROUTER_API_KEY });
-    return models.filter(model => model.free).map(model => model.id).sort();
-  },
-
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
     const apiKey = context.apiKey;
     if (!apiKey) throw new Error('OPENROUTER_API_KEY is required');
