@@ -11,8 +11,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 function decodeDataUri(value: unknown): { mime: string; bytes: Uint8Array } | null {
   if (typeof value !== 'string') return null;
   const match = value.match(/^data:([^;,]+);base64,(.+)$/s);
-  if (!match) return null;
-  return { mime: match[1], bytes: Uint8Array.from(Buffer.from(match[2], 'base64')) };
+  const mime = match?.[1];
+  const encoded = match?.[2];
+  if (!mime || !encoded) return null;
+  return { mime, bytes: Uint8Array.from(Buffer.from(encoded, 'base64')) };
 }
 
 async function executeText(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
