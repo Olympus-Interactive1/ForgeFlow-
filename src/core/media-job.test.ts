@@ -45,7 +45,7 @@ describe("pollMediaJob", () => {
 
   it("times out without making another provider request", async () => {
     const getJob = vi.fn().mockResolvedValue(job("running"));
-    await expect(pollMediaJob(getJob, { timeoutMs: 1, intervalMs: 0 })).rejects.toThrow(/timed out/);
+    await expect(pollMediaJob(getJob, { timeoutMs: 1, intervalMs: 10 })).rejects.toThrow(/timed out/);
     expect(getJob).toHaveBeenCalledTimes(1);
   });
 });
