@@ -7,17 +7,28 @@ export interface RouterOptions {
   contextFor?: (provider: Provider) => ProviderContext;
 }
 
+export interface ProviderHealth {
+  successes: number;
+  failures: number;
+  consecutiveFailures: number;
+  lastFailureAt?: number;
+  latencyMs: number;
+}
+
 export class ModelRouter {
   private readonly providers: Provider[];
   private readonly freeProviders: Set<string>;
   private readonly qualityProviders: Set<string>;
   private readonly contextFor: (provider: Provider) => ProviderContext;
+  private readonly health = new Map<string, ProviderHealth>();
+  private readonly unhealthyCooldownMs = 30_000;
 
   constructor(options: RouterOptions) {
     this.providers = options.providers;
     this.freeProviders = new Set(options.freeProviders ?? []);
     this.qualityProviders = new Set(options.qualityProviders ?? []);
     this.contextFor = options.contextFor ?? (() => ({}));
+    for (const provider of this.providers) this.health.set(provider.id, { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 });
   }
 
   async route(request: ModelRequest): Promise<ModelResponse> {
@@ -25,18 +36,62 @@ export class ModelRouter {
     const candidates = this.select(request, mode);
     if (candidates.length === 0) throw new Error(`No provider supports capability: ${request.capability}`);
     let lastError: unknown;
+
     for (const provider of candidates) {
-      try { return await provider.execute(request, this.contextFor(provider)); }
-      catch (error) { lastError = error; if (mode !== 'fallback' && mode !== 'auto') throw error; }
+      const started = Date.now();
+      try {
+        const result = await provider.execute(request, this.contextFor(provider));
+        this.recordSuccess(provider.id, Date.now() - started);
+        return result;
+      } catch (error) {
+        this.recordFailure(provider.id, Date.now() - started);
+        lastError = error;
+        if (mode !== 'fallback' && mode !== 'auto') throw error;
+      }
     }
     throw new Error(`All candidate providers failed: ${String(lastError)}`);
+  }
+
+  getHealth(): Record<string, ProviderHealth> {
+    return Object.fromEntries([...this.health.entries()].map(([id, value]) => [id, { ...value }]));
+  }
+
+  resetHealth(providerId?: string): void {
+    if (providerId) this.health.set(providerId, { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 });
+    else for (const provider of this.providers) this.health.set(provider.id, { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 });
+  }
+
+  private recordSuccess(id: string, latencyMs: number): void {
+    const current = this.health.get(id) ?? { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 };
+    current.successes += 1;
+    current.consecutiveFailures = 0;
+    current.latencyMs = current.latencyMs === 0 ? latencyMs : Math.round(current.latencyMs * 0.7 + latencyMs * 0.3);
+    this.health.set(id, current);
+  }
+
+  private recordFailure(id: string, latencyMs: number): void {
+    const current = this.health.get(id) ?? { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 };
+    current.failures += 1;
+    current.consecutiveFailures += 1;
+    current.lastFailureAt = Date.now();
+    current.latencyMs = current.latencyMs === 0 ? latencyMs : Math.round(current.latencyMs * 0.7 + latencyMs * 0.3);
+    this.health.set(id, current);
   }
 
   private select(request: ModelRequest, mode: RouteMode): Provider[] {
     let candidates = this.providers.filter(p => p.capabilities.includes(request.capability));
     if (request.provider) candidates = candidates.filter(p => p.id === request.provider);
-    if (mode === 'free-first') candidates.sort((a, b) => Number(this.freeProviders.has(b.id)) - Number(this.freeProviders.has(a.id)));
-    if (mode === 'quality') candidates.sort((a, b) => Number(this.qualityProviders.has(b.id)) - Number(this.qualityProviders.has(a.id)));
+    const now = Date.now();
+    candidates.sort((a, b) => {
+      const ah = this.health.get(a.id)!;
+      const bh = this.health.get(b.id)!;
+      const aCooling = ah.lastFailureAt !== undefined && now - ah.lastFailureAt < this.unhealthyCooldownMs && ah.consecutiveFailures >= 2;
+      const bCooling = bh.lastFailureAt !== undefined && now - bh.lastFailureAt < this.unhealthyCooldownMs && bh.consecutiveFailures >= 2;
+      if (aCooling !== bCooling) return Number(aCooling) - Number(bCooling);
+      if (mode === 'free-first') return Number(this.freeProviders.has(b.id)) - Number(this.freeProviders.has(a.id));
+      if (mode === 'quality') return Number(this.qualityProviders.has(b.id)) - Number(this.qualityProviders.has(a.id));
+      return ah.consecutiveFailures - bh.consecutiveFailures || ah.latencyMs - bh.latencyMs;
+    });
     return candidates;
   }
 }
