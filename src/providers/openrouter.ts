@@ -2,6 +2,7 @@ import type { DiscoveredModel, ModelRequest, ModelResponse, Provider, ProviderCo
 import { requestBytes, requestJson } from '../core/http.js';
 import { extractTextContent } from '../core/response.js';
 import { normalizeMediaAsset } from '../core/media-asset.js';
+import { pollMediaJob, type MediaJob } from '../core/media-job.js';
 
 interface OpenRouterMessage { content?: unknown; reasoning_content?: unknown; }
 interface OpenRouterResponse { choices?: Array<{ message?: OpenRouterMessage }>; model?: string; usage?: Record<string, number>; }
@@ -13,6 +14,8 @@ interface VideoModelsResponse { data?: VideoModel[]; }
 interface VideoJob { id?: string; status?: string; polling_url?: string; unsigned_urls?: string[]; usage?: Record<string, number>; error?: string; }
 
 const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000);
+const mediaJobTimeout = () => Number(process.env.FORGEFLOW_MEDIA_JOB_TIMEOUT_MS ?? 10 * 60_000);
+const mediaJobPollInterval = () => Number(process.env.FORGEFLOW_MEDIA_JOB_POLL_MS ?? 2000);
 const freePrice = (value?: string) => value === '0' || value === '0.0' || value === '0.00';
 const allPricesFree = (prices: Record<string, string> | undefined) => { const values = Object.values(prices ?? {}); return values.length > 0 && values.every(freePrice); };
 const trustedFreeMediaModels = () => new Set((process.env.FORGEFLOW_TRUSTED_FREE_MEDIA_MODELS ?? '').split(',').map(value => value.trim()).filter(Boolean));
@@ -23,8 +26,8 @@ const trustedFreeMediaModels = () => new Set((process.env.FORGEFLOW_TRUSTED_FREE
  * Free-only routing therefore requires an explicit trusted model allowlist.
  */
 export function isVerifiedFreeMediaModel(modelId: string, pricingSkus?: Record<string, string>): boolean {
-  if (trustedFreeMediaModels().has(modelId)) return true;
-  return false;
+  void pricingSkus;
+  return trustedFreeMediaModels().has(modelId);
 }
 
 export const openRouterProvider: Provider = {
@@ -76,9 +79,12 @@ export const openRouterProvider: Provider = {
       const job = await requestJson<VideoJob>(`${base}/videos`, { method: 'POST', timeoutMs: context.timeoutMs ?? timeout(), headers, body: JSON.stringify(body) });
       if (!job.id) throw new Error(job.error ?? 'OpenRouter video job was not created');
       const pollUrl = job.polling_url ? new URL(job.polling_url, base).toString() : `${base}/videos/${encodeURIComponent(job.id)}`;
-      let status = job;
-      for (let attempt = 0; attempt < 90; attempt++) { if (status.status === 'completed') break; if (status.status === 'failed' || status.status === 'cancelled') throw new Error(status.error ?? `OpenRouter video generation ${status.status}`); await new Promise(resolve => setTimeout(resolve, 2000)); status = await requestJson<VideoJob>(pollUrl, { method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers }); }
-      if (status.status !== 'completed') throw new Error('OpenRouter video generation timed out');
+      const completed = await pollMediaJob<VideoJob>(async (): Promise<MediaJob<VideoJob>> => {
+        const status = await requestJson<VideoJob>(pollUrl, { method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers });
+        const state = status.status === 'completed' ? 'completed' : status.status === 'failed' ? 'failed' : status.status === 'cancelled' ? 'cancelled' : 'running';
+        return { id: job.id!, provider: 'openrouter', status: state, createdAt: 0, updatedAt: Date.now(), result: status, error: status.error };
+      }, { timeoutMs: mediaJobTimeout(), intervalMs: mediaJobPollInterval() });
+      const status = completed.result ?? job;
       const content = await requestBytes(`${base}/videos/${encodeURIComponent(job.id)}/content?index=0`, { method: 'GET', timeoutMs: context.timeoutMs ?? timeout(), headers });
       const asset = normalizeMediaAsset({ data: Buffer.from(content.bytes).toString('base64'), mimeType: content.contentType ?? 'video/mp4' }, 'video');
       return { output: asset, asset, provider: 'openrouter', model, usage: status.usage, metadata: { free: isVerifiedFreeMediaModel(model), endpoint: 'videos' } };
