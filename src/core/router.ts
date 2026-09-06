@@ -5,6 +5,7 @@ export interface RouterOptions {
   freeProviders?: string[];
   qualityProviders?: string[];
   contextFor?: (provider: Provider) => ProviderContext;
+  freeOnly?: boolean;
 }
 
 export interface ProviderHealth {
@@ -20,6 +21,7 @@ export class ModelRouter {
   private readonly freeProviders: Set<string>;
   private readonly qualityProviders: Set<string>;
   private readonly contextFor: (provider: Provider) => ProviderContext;
+  private readonly freeOnly: boolean;
   private readonly health = new Map<string, ProviderHealth>();
   private readonly unhealthyCooldownMs = 30_000;
 
@@ -28,33 +30,39 @@ export class ModelRouter {
     this.freeProviders = new Set(options.freeProviders ?? []);
     this.qualityProviders = new Set(options.qualityProviders ?? []);
     this.contextFor = options.contextFor ?? (() => ({}));
+    this.freeOnly = options.freeOnly ?? true;
     for (const provider of this.providers) this.health.set(provider.id, { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 });
   }
 
   async route(request: ModelRequest): Promise<ModelResponse> {
-    const mode: RouteMode = request.mode ?? 'auto';
+    const mode: RouteMode = request.mode ?? 'free-first';
     const candidates = this.select(request, mode);
-    if (candidates.length === 0) throw new Error(`No provider supports capability/operation: ${request.capability}`);
+    if (candidates.length === 0) {
+      const policy = this.freeOnly ? 'free-only policy' : 'provider policy';
+      throw new Error(`No free provider/model supports capability/operation: ${request.capability} (${policy})`);
+    }
     let lastError: unknown;
 
     for (const provider of candidates) {
       const started = Date.now();
       try {
-        const result = await provider.execute(request, this.contextFor(provider));
+        const result = await provider.execute(request, { ...this.contextFor(provider), freeOnly: this.freeOnly });
         this.recordSuccess(provider.id, Date.now() - started);
         return result;
       } catch (error) {
         this.recordFailure(provider.id, Date.now() - started);
         lastError = error;
-        if (request.provider || (mode !== 'fallback' && mode !== 'auto')) throw error;
+        if (request.provider || (mode !== 'fallback' && mode !== 'auto' && mode !== 'free-first')) throw error;
       }
     }
-    throw new Error(`All candidate providers failed: ${String(lastError)}`);
+    throw new Error(`All free candidate providers failed: ${String(lastError)}`);
   }
 
   getHealth(): Record<string, ProviderHealth> {
     return Object.fromEntries([...this.health.entries()].map(([id, value]) => [id, { ...value }]));
   }
+
+  isFreeOnly(): boolean { return this.freeOnly; }
 
   resetHealth(providerId?: string): void {
     if (providerId) this.health.set(providerId, { successes: 0, failures: 0, consecutiveFailures: 0, latencyMs: 0 });
@@ -79,7 +87,11 @@ export class ModelRouter {
   }
 
   private select(request: ModelRequest, mode: RouteMode): Provider[] {
-    let candidates = this.providers.filter(p => p.capabilities.includes(request.capability) && (p.supports?.(request) ?? true));
+    let candidates = this.providers.filter(p =>
+      (!this.freeOnly || p.free) &&
+      p.capabilities.includes(request.capability) &&
+      (p.supports?.(request) ?? true)
+    );
     if (request.provider) candidates = candidates.filter(p => p.id === request.provider);
     const now = Date.now();
     candidates.sort((a, b) => {
