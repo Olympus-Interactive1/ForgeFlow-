@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ProviderRegistry } from '../src/core/provider-registry.js';
 import type { Provider } from '../src/core/types.js';
 
-const provider = (id: string): Provider => ({ id, capabilities: ['text'], async execute() { return { output: null, provider: id }; } });
+const provider = (id: string): Provider => ({ id, free: true, capabilities: ['text'], async execute() { return { output: null, provider: id }; } });
 
 describe('ProviderRegistry', () => {
   it('registers and retrieves providers', () => {
