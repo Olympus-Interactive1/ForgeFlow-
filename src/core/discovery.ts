@@ -1,4 +1,4 @@
-import type { Capability, Provider, ProviderContext } from './types.js';
+import type { Capability, Provider } from './types.js';
 
 export interface DiscoveredProvider {
   id: string;
@@ -10,21 +10,17 @@ export interface DiscoveredProvider {
   error?: string;
 }
 
-export async function discoverProviders(
-  providers: Provider[],
-  contextFor: (provider: Provider) => ProviderContext,
-  freeOnly: boolean
-): Promise<DiscoveredProvider[]> {
-  const results = await Promise.all(providers.map(async provider => {
+export async function discoverProviders(providers: Provider[], freeOnly: boolean): Promise<DiscoveredProvider[]> {
+  return Promise.all(providers.map(async provider => {
+    const discoveredAt = new Date().toISOString();
     if (freeOnly && !provider.free) {
-      return { id: provider.id, free: provider.free, enabledByPolicy: false, capabilities: provider.capabilities, models: [], discoveredAt: new Date().toISOString() };
+      return { id: provider.id, free: provider.free, enabledByPolicy: false, capabilities: provider.capabilities, models: [], discoveredAt };
     }
     try {
       const models = provider.listModels ? await provider.listModels() : [];
-      return { id: provider.id, free: provider.free, enabledByPolicy: true, capabilities: provider.capabilities, models, discoveredAt: new Date().toISOString() };
+      return { id: provider.id, free: provider.free, enabledByPolicy: true, capabilities: provider.capabilities, models, discoveredAt };
     } catch (error) {
-      return { id: provider.id, free: provider.free, enabledByPolicy: true, capabilities: provider.capabilities, models: [], discoveredAt: new Date().toISOString(), error: String(error) };
+      return { id: provider.id, free: provider.free, enabledByPolicy: true, capabilities: provider.capabilities, models: [], discoveredAt, error: String(error) };
     }
   }));
-  return results;
 }
