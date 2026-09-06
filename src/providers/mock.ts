@@ -2,8 +2,9 @@ import type { Provider } from '../core/types.js';
 
 export const mockProvider: Provider = {
   id: 'mock',
+  free: true,
   capabilities: ['text', 'image', 'video', 'audio', 'stt', 'tts'],
   async execute(request) {
-    return { output: { ok: true, capability: request.capability, input: request.input, prompt: request.prompt }, provider: 'mock', model: request.model };
+    return { output: { ok: true, capability: request.capability, input: request.input, prompt: request.prompt }, provider: 'mock', model: request.model, metadata: { developmentOnly: true, free: true } };
   }
 };
