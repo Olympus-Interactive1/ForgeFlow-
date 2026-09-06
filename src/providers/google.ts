@@ -48,7 +48,7 @@ export const googleProvider: Provider = {
     if (!apiKey) throw new Error('GOOGLE_API_KEY is required');
     const model = request.model ?? 'gemini-3.1-flash-lite';
     const base = (context.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
-    const operation = String(request.metadata?.operation ?? '');
+    const operation = typeof request.metadata?.operation === 'string' ? request.metadata.operation : '';
     const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
 
     if (operation === 'image_generate' || operation === 'image_edit') {
