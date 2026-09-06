@@ -9,17 +9,18 @@ export class WorkflowEngine {
   constructor(private readonly router: ModelRouter) {}
 
   async createAd(input: CreateAdInput): Promise<ModelResponse[]> {
-    const results: ModelResponse[] = [];
-    results.push(await this.router.route({ capability: 'image', prompt: input.brief, model: input.imageModel }));
-    results.push(await this.router.route({ capability: 'text', prompt: input.brief, model: input.copyModel }));
-    return results;
+    const [image, copy] = await Promise.all([
+      this.router.route({ capability: 'image', prompt: input.brief, model: input.imageModel, mode: 'auto' }),
+      this.router.route({ capability: 'text', prompt: input.brief, model: input.copyModel, mode: 'auto' })
+    ]);
+    return [image, copy];
   }
 
   async socialVideo(input: SocialVideoInput): Promise<ModelResponse> {
-    return this.router.route({ capability: 'video', prompt: `${input.brief}\nDuration: ${input.durationSeconds ?? 15}s` });
+    return this.router.route({ capability: 'video', prompt: `${input.brief}\nDuration: ${input.durationSeconds ?? 15}s`, mode: 'auto' });
   }
 
   async fullMedia(input: FullMediaInput): Promise<ModelResponse[]> {
-    return Promise.all(input.outputs.map(capability => this.router.route({ capability, prompt: input.brief })));
+    return Promise.all(input.outputs.map(capability => this.router.route({ capability, prompt: input.brief, mode: 'auto' })));
   }
 }
