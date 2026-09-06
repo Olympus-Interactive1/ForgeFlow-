@@ -35,9 +35,13 @@ export async function requestJson<T>(url: string, init: RequestOptions = {}): Pr
       await new Promise(resolve => setTimeout(resolve, delay));
     } catch (error) {
       lastError = error;
-      if (attempt >= retries) throw error;
-      const delay = Math.min(retryBaseMs * 2 ** attempt, 10_000);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      if (error instanceof Error && /^HTTP \d+ from /.test(error.message)) {
+        const status = Number(error.message.match(/^HTTP (\d+)/)?.[1]);
+        if (!RETRYABLE_STATUS.has(status) || attempt >= retries) throw error;
+      } else if (attempt >= retries) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, Math.min(retryBaseMs * 2 ** attempt, 10_000)));
     } finally {
       clearTimeout(timer);
     }
