@@ -11,6 +11,7 @@ interface VideoJob { id?: string; status?: string; polling_url?: string; unsigne
 
 const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000);
 const freePrice = (value?: string) => value === '0' || value === '0.0' || value === '0.00';
+const allPricesFree = (prices: Record<string, string> | undefined) => Object.values(prices ?? {}).every((value: string) => freePrice(value));
 
 export const openRouterProvider: Provider = {
   id: 'openrouter',
@@ -39,8 +40,8 @@ export const openRouterProvider: Provider = {
       const free = freePrice(model.pricing?.prompt) && freePrice(model.pricing?.completion);
       if (capabilities.length) result.push({ id: model.id, capabilities: capabilities as DiscoveredModel['capabilities'], free, quality: free ? 60 : 75 });
     }
-    for (const model of images.data ?? []) if (model.id) result.push({ id: model.id, capabilities: ['image'], free: Object.values(model.pricing_skus ?? {}).every(freePrice), quality: 85, metadata: { endpoint: 'images' } });
-    for (const model of videos.data ?? []) if (model.id) result.push({ id: model.id, capabilities: ['video'], free: Object.values(model.pricing_skus ?? {}).every(freePrice), quality: 90, metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [] } });
+    for (const model of images.data ?? []) if (model.id) result.push({ id: model.id, capabilities: ['image'], free: allPricesFree(model.pricing_skus), quality: 85, metadata: { endpoint: 'images' } });
+    for (const model of videos.data ?? []) if (model.id) result.push({ id: model.id, capabilities: ['video'], free: allPricesFree(model.pricing_skus), quality: 90, metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [] } });
     return result;
   },
 
@@ -64,9 +65,10 @@ export const openRouterProvider: Provider = {
     const headers = { Authorization: `Bearer ${context.apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
 
     if (operation === 'image_generate' || operation === 'image_edit') {
+      const imageOptions = (request.metadata?.imageOptions ?? {}) as Record<string, unknown>;
       const body = await requestJson<ImageResponse>(`${base}/images`, {
         method: 'POST', timeoutMs: context.timeoutMs ?? timeout(), headers,
-        body: JSON.stringify({ model, prompt: request.prompt ?? String(request.input ?? ''), ...(request.metadata?.imageOptions as Record<string, unknown> ?? {}) })
+        body: JSON.stringify({ model, prompt: request.prompt ?? String(request.input ?? ''), ...imageOptions })
       });
       const item = body.data?.[0];
       if (!item?.b64_json && !item?.url) throw new Error('OpenRouter image API returned no image');
