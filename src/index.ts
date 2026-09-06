@@ -8,6 +8,7 @@ import { falProvider, googleProvider, mockProvider, nvidiaProvider, openRouterPr
 import { WorkflowEngine } from './workflows/index.js';
 import type { Capability } from './core/types.js';
 
+const VERSION = '0.4.0';
 const registry = new ProviderRegistry().register(openRouterProvider).register(googleProvider).register(nvidiaProvider).register(falProvider).register(mockProvider);
 const env = process.env;
 const router = new ModelRouter({
@@ -23,7 +24,7 @@ const router = new ModelRouter({
 const workflows = new WorkflowEngine(router);
 
 export function getForgeFlowHealth() {
-  return { status: 'ok', service: 'forgeflow-mcp', version: '0.3.0', providers: router.getHealth() };
+  return { status: 'ok', service: 'forgeflow-mcp', version: VERSION, providers: router.getHealth() };
 }
 
 async function routeTool(capability: Capability, args: { prompt?: string; input?: unknown; model?: string; provider?: string; mode?: 'auto' | 'free-first' | 'quality' | 'fallback'; metadata?: Record<string, unknown> }) {
@@ -31,7 +32,7 @@ async function routeTool(capability: Capability, args: { prompt?: string; input?
 }
 
 export function createForgeFlowServer() {
-  const server = new McpServer({ name: 'forgeflow-mcp', version: '0.3.0' });
+  const server = new McpServer({ name: 'forgeflow-mcp', version: VERSION });
   const common = {
     prompt: z.string().optional(), input: z.unknown().optional(), model: z.string().optional(), provider: z.string().optional(),
     mode: z.enum(['auto', 'free-first', 'quality', 'fallback']).optional(), metadata: z.record(z.string(), z.unknown()).optional()
