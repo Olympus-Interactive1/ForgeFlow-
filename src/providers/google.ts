@@ -5,7 +5,7 @@ interface GeminiResponse { candidates?: Array<{ content?: { parts?: Array<{ text
 
 export const googleProvider: Provider = {
   id: 'google',
-  capabilities: ['text', 'image', 'video'],
+  capabilities: ['text'],
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
     if (!context.apiKey) throw new Error('GOOGLE_API_KEY is required');
     const model = request.model ?? 'gemini-2.5-flash';
