@@ -1,92 +1,28 @@
 import type { ModelRequest, ModelResponse, Provider, ProviderContext } from '../core/types.js';
+import { normalizeMediaAsset } from '../core/media-asset.js';
 import { requestBytes, requestJson } from '../core/http.js';
-
 interface NvidiaChatResponse { choices?: Array<{ message?: { content?: unknown } }>; model?: string; usage?: Record<string, number>; }
 interface CosmosResponse { b64_video?: string; }
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
-}
-
-function decodeDataUri(value: unknown): { mime: string; bytes: Uint8Array } | null {
-  if (typeof value !== 'string') return null;
-  const match = value.match(/^data:([^;,]+);base64,(.+)$/s);
-  const mime = match?.[1];
-  const encoded = match?.[2];
-  if (!mime || !encoded) return null;
-  return { mime, bytes: Uint8Array.from(Buffer.from(encoded, 'base64')) };
-}
-
+function asRecord(value: unknown): Record<string, unknown> { return value && typeof value === 'object' ? value as Record<string, unknown> : {}; }
+function decodeDataUri(value: unknown): { mime: string; bytes: Uint8Array } | null { if (typeof value !== 'string') return null; const match = value.match(/^data:([^;,]+);base64,(.+)$/s); if (!match?.[1] || !match?.[2]) return null; return { mime: match[1], bytes: Uint8Array.from(Buffer.from(match[2], 'base64')) }; }
 async function executeText(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
-  if (!context.apiKey) throw new Error('NVIDIA_API_KEY is required');
-  const base = (context.baseUrl ?? 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '');
-  const model = request.model ?? 'deepseek-ai/deepseek-v4-flash-0731';
-  const body = await requestJson<NvidiaChatResponse>(`${base}/chat/completions`, {
-    method: 'POST', timeoutMs: context.timeoutMs,
-    headers: { Authorization: `Bearer ${context.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: request.prompt ?? String(request.input ?? '') }] })
-  });
+  if (!context.apiKey) throw new Error('NVIDIA_API_KEY is required'); const base = (context.baseUrl ?? 'https://integrate.api.nvidia.com/v1').replace(/\/$/, ''); const model = request.model ?? 'deepseek-ai/deepseek-v4-flash-0731';
+  const body = await requestJson<NvidiaChatResponse>(`${base}/chat/completions`, { method: 'POST', timeoutMs: context.timeoutMs, headers: { Authorization: `Bearer ${context.apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: request.prompt ?? String(request.input ?? '') }] }) });
   return { output: body.choices?.[0]?.message?.content ?? null, provider: 'nvidia', model: body.model ?? model, usage: body.usage, metadata: { free: true } };
 }
-
 async function executeVideo(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
-  if (!context.apiKey) throw new Error('NVIDIA_API_KEY is required');
-  const meta = asRecord(request.metadata);
-  const input = asRecord(request.input);
-  const image = meta.image ?? input.image;
-  const imageData = decodeDataUri(image);
-  const inferUrl = (meta.inferUrl ?? process.env.COSMOS3_INFER_URL ?? 'https://ai.api.nvidia.com/v1/genai/nvidia/cosmos3-nano').toString();
-  const body: Record<string, unknown> = {
-    prompt: request.prompt ?? input.prompt ?? '',
-    seed: meta.seed ?? input.seed,
-    negative_prompt: meta.negativePrompt ?? input.negative_prompt,
-    guidance_scale: meta.guidanceScale ?? input.guidance_scale,
-    steps: meta.steps ?? input.steps,
-    resolution: meta.resolution ?? input.resolution ?? '480_16_9',
-    num_output_frames: meta.numOutputFrames ?? input.num_output_frames ?? 121,
-    fps: meta.fps ?? input.fps ?? 24
-  };
-  for (const key of Object.keys(body)) if (body[key] === undefined) delete body[key];
-  if (imageData) body.image = `data:${imageData.mime};base64,${Buffer.from(imageData.bytes).toString('base64')}`;
-  const result = await requestJson<CosmosResponse>(inferUrl, {
-    method: 'POST', timeoutMs: context.timeoutMs ?? 180_000,
-    headers: { Authorization: `Bearer ${context.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), retries: 1
-  });
-  if (!result.b64_video) throw new Error('NVIDIA Cosmos3 returned no b64_video output');
-  return { output: { data: result.b64_video, mimeType: 'video/mp4', encoding: 'base64' }, provider: 'nvidia', model: 'nvidia/cosmos3-nano', metadata: { free: true, operation: imageData ? 'image_to_video' : 'text_to_video' } };
+  if (!context.apiKey) throw new Error('NVIDIA_API_KEY is required'); const meta = asRecord(request.metadata); const input = asRecord(request.input); const imageData = decodeDataUri(meta.image ?? input.image);
+  const inferUrl = (meta.inferUrl ?? process.env.COSMOS3_INFER_URL ?? 'https://ai.api.nvidia.com/v1/genai/nvidia/cosmos3-nano').toString(); const body: Record<string, unknown> = { prompt: request.prompt ?? input.prompt ?? '', seed: meta.seed ?? input.seed, negative_prompt: meta.negativePrompt ?? input.negative_prompt, guidance_scale: meta.guidanceScale ?? input.guidance_scale, steps: meta.steps ?? input.steps, resolution: meta.resolution ?? input.resolution ?? '480_16_9', num_output_frames: meta.numOutputFrames ?? input.num_output_frames ?? 121, fps: meta.fps ?? input.fps ?? 24 };
+  for (const key of Object.keys(body)) if (body[key] === undefined) delete body[key]; if (imageData) body.image = `data:${imageData.mime};base64,${Buffer.from(imageData.bytes).toString('base64')}`;
+  const result = await requestJson<CosmosResponse>(inferUrl, { method: 'POST', timeoutMs: context.timeoutMs ?? 180_000, headers: { Authorization: `Bearer ${context.apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), retries: 1 });
+  if (!result.b64_video) throw new Error('NVIDIA Cosmos3 returned no b64_video output'); const asset = normalizeMediaAsset({ data: result.b64_video, mimeType: 'video/mp4', metadata: { encoding: 'base64' } }, 'video');
+  return { output: asset, asset, provider: 'nvidia', model: 'nvidia/cosmos3-nano', metadata: { free: true, operation: imageData ? 'image_to_video' : 'text_to_video' } };
 }
-
 async function executeTts(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
-  if (!context.apiKey) throw new Error('NVIDIA_API_KEY is required');
-  const meta = asRecord(request.metadata);
-  const base = (meta.baseUrl ?? process.env.NVIDIA_TTS_BASE_URL ?? '').toString().replace(/\/$/, '');
-  if (!base) throw new Error('NVIDIA_TTS_BASE_URL is required for hosted NVIDIA Magpie TTS');
-  const form = new FormData();
-  form.set('language', String(meta.language ?? 'en-US'));
-  form.set('text', request.prompt ?? String(request.input ?? ''));
-  if (meta.voice) form.set('voice', String(meta.voice));
-  if (meta.sampleRateHz) form.set('sample_rate_hz', String(meta.sampleRateHz));
-  form.set('encoding', 'LINEAR_PCM');
-  const headers: Record<string, string> = { Authorization: `Bearer ${context.apiKey}` };
-  if (process.env.NVIDIA_TTS_FUNCTION_ID) headers['function-id'] = process.env.NVIDIA_TTS_FUNCTION_ID;
-  const result = await requestBytes(`${base}/v1/audio/synthesize`, { method: 'POST', timeoutMs: context.timeoutMs ?? 120_000, headers, body: form, retries: 1 });
-  return { output: { data: Buffer.from(result.bytes).toString('base64'), mimeType: result.contentType?.split(';')[0] ?? 'audio/wav', encoding: 'base64' }, provider: 'nvidia', model: 'magpie-tts-zeroshot', metadata: { free: true, operation: 'tts' } };
+  if (!context.apiKey) throw new Error('NVIDIA_API_KEY is required'); const meta = asRecord(request.metadata); const base = (meta.baseUrl ?? process.env.NVIDIA_TTS_BASE_URL ?? '').toString().replace(/\/$/, ''); if (!base) throw new Error('NVIDIA_TTS_BASE_URL is required for hosted NVIDIA Magpie TTS');
+  const form = new FormData(); form.set('language', String(meta.language ?? 'en-US')); form.set('text', request.prompt ?? String(request.input ?? '')); if (meta.voice) form.set('voice', String(meta.voice)); if (meta.sampleRateHz) form.set('sample_rate_hz', String(meta.sampleRateHz)); form.set('encoding', 'LINEAR_PCM');
+  const headers: Record<string, string> = { Authorization: `Bearer ${context.apiKey}` }; if (process.env.NVIDIA_TTS_FUNCTION_ID) headers['function-id'] = process.env.NVIDIA_TTS_FUNCTION_ID;
+  const result = await requestBytes(`${base}/v1/audio/synthesize`, { method: 'POST', timeoutMs: context.timeoutMs ?? 120_000, headers, body: form, retries: 1 }); const asset = normalizeMediaAsset({ data: Buffer.from(result.bytes).toString('base64'), mimeType: result.contentType?.split(';')[0] ?? 'audio/wav', metadata: { encoding: 'base64' } }, 'audio');
+  return { output: asset, asset, provider: 'nvidia', model: 'magpie-tts-zeroshot', metadata: { free: true, operation: 'tts' } };
 }
-
-export const nvidiaProvider: Provider = {
-  id: 'nvidia',
-  free: true,
-  capabilities: ['text', 'video', 'tts'],
-  supports(request: ModelRequest): boolean {
-    const operation = String(request.metadata?.operation ?? '');
-    if (request.capability === 'video') return operation === 'video_generate' || operation === 'video_image_to_video';
-    if (request.capability === 'tts') return operation === 'tts';
-    return request.capability === 'text';
-  },
-  async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
-    if (request.capability === 'video') return executeVideo(request, context);
-    if (request.capability === 'tts') return executeTts(request, context);
-    return executeText(request, context);
-  }
-};
+export const nvidiaProvider: Provider = { id: 'nvidia', free: true, capabilities: ['text', 'video', 'tts'], supports(request: ModelRequest): boolean { const operation = String(request.metadata?.operation ?? ''); if (request.capability === 'video') return operation === 'video_generate' || operation === 'video_image_to_video'; if (request.capability === 'tts') return operation === 'tts'; return request.capability === 'text'; }, async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> { if (request.capability === 'video') return executeVideo(request, context); if (request.capability === 'tts') return executeTts(request, context); return executeText(request, context); } };
