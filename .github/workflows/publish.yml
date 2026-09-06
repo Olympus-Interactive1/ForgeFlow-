@@ -17,7 +17,12 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm install
+      - run: npm run lint
+      - run: npm test
       - run: npm run build
-      - run: npm publish
+      - name: Verify package metadata
+        run: npm pack --dry-run
+      - name: Publish package
+        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
