@@ -1,7 +1,9 @@
 import type { DiscoveredModel, ModelRequest, ModelResponse, Provider, ProviderContext } from '../core/types.js';
 import { requestBytes, requestJson } from '../core/http.js';
+import { extractTextContent } from '../core/response.js';
 
-interface OpenRouterResponse { choices?: Array<{ message?: { content?: unknown } }>; model?: string; usage?: Record<string, number>; }
+interface OpenRouterMessage { content?: unknown; reasoning_content?: unknown; }
+interface OpenRouterResponse { choices?: Array<{ message?: OpenRouterMessage }>; model?: string; usage?: Record<string, number>; }
 interface OpenRouterModel { id?: string; pricing?: { prompt?: string; completion?: string }; architecture?: { input_modalities?: string[]; output_modalities?: string[] }; }
 interface OpenRouterModelsResponse { data?: OpenRouterModel[]; }
 interface ImageResponse { data?: Array<{ b64_json?: string; url?: string; media_type?: string }>; }
@@ -11,7 +13,10 @@ interface VideoJob { id?: string; status?: string; polling_url?: string; unsigne
 
 const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000);
 const freePrice = (value?: string) => value === '0' || value === '0.0' || value === '0.00';
-const allPricesFree = (prices: Record<string, string> | undefined) => Object.values(prices ?? {}).every((value: string) => freePrice(value));
+const allPricesFree = (prices: Record<string, string> | undefined) => {
+  const values = Object.values(prices ?? {});
+  return values.length > 0 && values.every(freePrice);
+};
 
 export const openRouterProvider: Provider = {
   id: 'openrouter',
@@ -40,8 +45,14 @@ export const openRouterProvider: Provider = {
       const free = freePrice(model.pricing?.prompt) && freePrice(model.pricing?.completion);
       if (capabilities.length) result.push({ id: model.id, capabilities: capabilities as DiscoveredModel['capabilities'], free, quality: free ? 60 : 75 });
     }
-    for (const model of images.data ?? []) if (model.id) result.push({ id: model.id, capabilities: ['image'], free: allPricesFree(model.pricing_skus), quality: 85, metadata: { endpoint: 'images' } });
-    for (const model of videos.data ?? []) if (model.id) result.push({ id: model.id, capabilities: ['video'], free: allPricesFree(model.pricing_skus), quality: 90, metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [] } });
+    for (const model of images.data ?? []) if (model.id) {
+      const free = allPricesFree(model.pricing_skus);
+      result.push({ id: model.id, capabilities: ['image'], free, quality: 85, metadata: { endpoint: 'images', eligibility: free ? 'free' : 'paid', eligibilityReason: free ? 'all-discovered-prices-are-zero' : 'provider-requires-or-may-require-credits' } });
+    }
+    for (const model of videos.data ?? []) if (model.id) {
+      const free = allPricesFree(model.pricing_skus);
+      result.push({ id: model.id, capabilities: ['video'], free, quality: 90, metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [], eligibility: free ? 'free' : 'paid', eligibilityReason: free ? 'all-discovered-prices-are-zero' : 'provider-requires-or-may-require-credits' } });
+    }
     return result;
   },
 
@@ -90,6 +101,12 @@ export const openRouterProvider: Provider = {
       headers,
       body: JSON.stringify({ model, messages: [{ role: 'user', content: request.prompt ?? String(request.input ?? '') }] })
     });
-    return { output: body.choices?.[0]?.message?.content ?? null, provider: 'openrouter', model: body.model ?? model, usage: body.usage, metadata: { free: true, routing: model === 'openrouter/free' ? 'dynamic-free-model' : 'explicit-model' } };
+    const message = body.choices?.[0]?.message;
+    const output = extractTextContent(message?.content);
+    if (output !== null) return { output, provider: 'openrouter', model: body.model ?? model, usage: body.usage, metadata: { free: true, routing: model === 'openrouter/free' ? 'dynamic-free-model' : 'explicit-model' } };
+    if (message && message.reasoning_content !== undefined && message.reasoning_content !== null) {
+      throw new Error('OpenRouter returned reasoning content without a final text response');
+    }
+    throw new Error('OpenRouter returned no final text content');
   }
 };
