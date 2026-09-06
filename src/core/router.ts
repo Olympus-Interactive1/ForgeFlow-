@@ -52,7 +52,9 @@ export class ModelRouter {
       } catch (error) {
         this.recordFailure(provider.id, Date.now() - started);
         lastError = error;
-        if (request.provider || (mode !== 'fallback' && mode !== 'auto' && mode !== 'free-first')) throw error;
+        // An explicitly selected provider is an explicit contract: never silently switch it.
+        // All automatic modes (including quality) may continue to another eligible free provider.
+        if (request.provider) throw error;
       }
     }
     throw new Error(`All free candidate providers failed: ${String(lastError)}`);
