@@ -16,10 +16,26 @@ export interface AssetPipelineStep extends PipelineStep {
   inputFromPrevious?: boolean;
 }
 
+const operationCapabilities: Record<MediaOperation, ModelRequest['capability']> = {
+  text_generate: 'text',
+  image_generate: 'image',
+  image_edit: 'image',
+  image_analyze: 'image',
+  image_upscale: 'image',
+  video_generate: 'video',
+  video_image_to_video: 'video',
+  video_extend: 'video',
+  video_analyze: 'video',
+  audio_generate: 'audio',
+  tts: 'tts',
+  stt: 'stt',
+};
+
 export class MediaPipeline {
   constructor(private readonly router: ModelRouter) {}
 
   async run(step: PipelineStep): Promise<ModelResponse> {
+    MediaPipeline.validateStep(step);
     return this.router.route({
       capability: step.capability,
       model: step.model,
@@ -46,6 +62,12 @@ export class MediaPipeline {
     }
 
     return results;
+  }
+
+  static validateStep(step: PipelineStep): void {
+    if (operationCapabilities[step.operation] !== step.capability) {
+      throw new Error(`Pipeline operation ${step.operation} requires ${operationCapabilities[step.operation]} capability`);
+    }
   }
 
   static requireAsset(response: ModelResponse): MediaAsset {
