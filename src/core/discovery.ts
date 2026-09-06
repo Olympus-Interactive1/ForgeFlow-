@@ -14,24 +14,24 @@ export interface DiscoveredProvider {
 export async function discoverProviders(providers: Provider[], freeOnly: boolean): Promise<DiscoveredProvider[]> {
   return Promise.all(providers.map(async provider => {
     const discoveredAt = new Date().toISOString();
-    if (freeOnly && !provider.free) {
-      return { id: provider.id, free: provider.free, enabledByPolicy: false, capabilities: provider.capabilities, models: [], discoveredModels: [], discoveredAt };
-    }
     try {
       const discoveredModels = provider.discoverModels
         ? await provider.discoverModels({ freeOnly })
-        : (provider.listModels ? (await provider.listModels()).map(id => ({ id, capabilities: provider.capabilities, free: provider.free })) : []);
+        : (provider.listModels
+          ? (await provider.listModels()).map(id => ({ id, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'free' : 'paid' }))
+          : [{ id: `${provider.id}:default`, capabilities: provider.capabilities, free: provider.free, eligibility: provider.free ? 'free' : 'paid' }]);
+      const eligibleModels = freeOnly ? discoveredModels.filter(model => model.free && model.eligibility !== 'paid') : discoveredModels;
       return {
         id: provider.id,
         free: provider.free,
-        enabledByPolicy: true,
+        enabledByPolicy: !freeOnly || provider.free || eligibleModels.length > 0,
         capabilities: provider.capabilities,
-        models: discoveredModels.map(model => model.id),
-        discoveredModels,
+        models: eligibleModels.map(model => model.id),
+        discoveredModels: eligibleModels,
         discoveredAt
       };
     } catch (error) {
-      return { id: provider.id, free: provider.free, enabledByPolicy: true, capabilities: provider.capabilities, models: [], discoveredModels: [], discoveredAt, error: String(error) };
+      return { id: provider.id, free: provider.free, enabledByPolicy: !freeOnly || provider.free, capabilities: provider.capabilities, models: [], discoveredModels: [], discoveredAt, error: String(error) };
     }
   }));
 }
