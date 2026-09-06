@@ -2,19 +2,19 @@
 
 ## 0.3.0 — 2026-09-06
 
-- Added operation-aware fal.ai media pipelines with real model endpoints.
-- Added text-to-image generation via `fal-ai/z-image/base`.
-- Added image-to-image editing via `fal-ai/playground-v25/image-to-image`.
-- Added image upscaling via `fal-ai/esrgan`.
-- Added text-to-video via `fal-ai/ltx-2.3/text-to-video`.
-- Added image-to-video via Kling V3 Standard.
-- Added video extension via LTX-2.3.
-- Added text-to-audio generation via Stable Audio 2.5.
-- Added TTS via Chatterbox.
-- Added STT via fal.ai Speech-to-Text.
-- Added normalized media result metadata with request IDs, MIME types and URLs.
-- Added explicit operation metadata to MCP media tools.
-- Bumped npm package version to 0.3.0.
+- Added operation-specific fal.ai media routing.
+- Added Z-Image Base text-to-image generation.
+- Added Playground v2.5 image-to-image editing.
+- Added ESRGAN image upscaling.
+- Added LTX-2.3 text-to-video generation.
+- Added Kling video image-to-video generation.
+- Added LTX-2.3 video extension.
+- Added Stable Audio 2.5 text-to-audio generation.
+- Added Chatterbox text-to-speech.
+- Added fal.ai speech-to-text.
+- Added normalized media results with request ID, operation, status, URL and MIME type where available.
+- Added explicit operation metadata to dedicated MCP media tools so edit/upscale/extend/TTS/STT requests do not fall back to generic generation.
+- Expanded README provider/model documentation.
 
 ## 0.2.0 — 2026-09-06
 
