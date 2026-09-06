@@ -4,6 +4,10 @@ Universal, provider-agnostic MCP server and AI media orchestration layer.
 
 ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect through stdio or remote Streamable HTTP.
 
+## v0.4.0 hardening
+
+v0.4.0 strengthens provider routing with operation-aware capability filtering, deterministic explicit-provider behavior, fallback isolation, and expanded release-contract tests. Provider adapters remain replaceable and MCP tool contracts remain provider-agnostic.
+
 ## What is included
 
 - MCP SDK v2 server
@@ -12,6 +16,7 @@ ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect throu
 - Optional Bearer API-key authentication
 - Request body-size protection and in-memory rate limiting
 - Provider registry and health-aware model router
+- Operation-aware provider support filtering
 - `auto`, `free-first`, `quality`, and `fallback` routing modes
 - Retry/backoff for transient provider failures
 - OpenRouter adapter
@@ -128,7 +133,7 @@ When `fal` is selected, ForgeFlow maps each dedicated media tool to an operation
 | `forgeflow_image_edit` | `fal-ai/playground-v25/image-to-image` |
 | `forgeflow_image_upscale` | `fal-ai/esrgan` |
 | `forgeflow_video_generate` | `fal-ai/ltx-2.3/text-to-video` |
-| `forgeflow_video_image_to_video` | `fal-ai/kling-video/v3/standard/image-to-video` |
+| `forgeflow_video_image_to_video` | `fal-ai/ltx-2.3/image-to-video` |
 | `forgeflow_video_extend` | `fal-ai/ltx-2.3/extend-video` |
 | `forgeflow_audio_generate` | `fal-ai/stable-audio-25/text-to-audio` |
 | `forgeflow_audio_tts` | `fal-ai/chatterbox/text-to-speech` |
@@ -137,6 +142,8 @@ When `fal` is selected, ForgeFlow maps each dedicated media tool to an operation
 You can override the model per request with the `model` argument. For asynchronous operation, set `metadata.waitForResult` to `false`; otherwise ForgeFlow polls the queue and returns a normalized result containing the request ID and media URL when available.
 
 Input files should be supplied as provider-compatible public URLs or data URIs. ForgeFlow does not expose provider API keys to MCP clients.
+
+Analyze tools are intentionally not mapped to fal.ai generation endpoints. A provider must explicitly advertise support for the requested operation before the router can select it.
 
 ## MCP tools
 
@@ -170,7 +177,7 @@ Input files should be supplied as provider-compatible public URLs or data URIs. 
 - `forgeflow_social_video`
 - `forgeflow_full_media`
 
-Provider/model support is capability-dependent; a tool being present does not imply every provider implements every operation.
+Provider/model support is capability- and operation-dependent; a tool being present does not imply every provider implements every operation.
 
 ## Provider routing and health
 
