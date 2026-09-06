@@ -46,7 +46,7 @@ export class ModelRouter {
       } catch (error) {
         this.recordFailure(provider.id, Date.now() - started);
         lastError = error;
-        if (mode !== 'fallback' && mode !== 'auto') throw error;
+        if (request.provider || (mode !== 'fallback' && mode !== 'auto')) throw error;
       }
     }
     throw new Error(`All candidate providers failed: ${String(lastError)}`);
