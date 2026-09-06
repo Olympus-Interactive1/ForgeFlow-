@@ -10,19 +10,21 @@ ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect throu
 - Stdio transport
 - Stateless Streamable HTTP transport
 - Optional Bearer API-key authentication
-- Provider registry and model router
+- Request body-size protection and in-memory rate limiting
+- Provider registry and health-aware model router
 - `auto`, `free-first`, `quality`, and `fallback` routing modes
+- Retry/backoff for transient provider failures
 - OpenRouter adapter
 - Google adapter
 - NVIDIA NIM adapter
-- fal.ai queue adapter
+- fal.ai queue adapter with optional polling/result retrieval
 - Local/mock provider for development
 - Dedicated image, video, audio, STT and TTS MCP tools
 - Composable ad, social-video and full-media workflows
 - Generic MCP client example
 - OpenCode remote MCP example
 - Docker and Docker Compose deployment
-- GitHub Actions CI
+- GitHub Actions CI with Node 20/22/24 and Docker smoke testing
 - npm publish workflow
 - TypeScript declarations
 
@@ -38,6 +40,7 @@ MCP Host
                            │
                     ┌──────┴──────┐
                     │ Model Router │
+                    │ + Health     │
                     └──────┬──────┘
                            │
              ┌─────────────┼─────────────┐
@@ -82,6 +85,15 @@ The MCP endpoint defaults to `http://localhost:8787/mcp` and the health endpoint
 
 The HTTP server uses the MCP SDK's stateless Streamable HTTP transport. It creates a fresh MCP server/transport pair per request, which keeps the remote endpoint simple and horizontally deployable.
 
+### HTTP hardening
+
+- Optional Bearer API-key authentication
+- Configurable per-key/IP rate limit
+- Configurable maximum request body size (`FORGEFLOW_MAX_BODY_BYTES`)
+- No provider credentials in tool schemas
+- Generic internal errors are not returned to remote clients
+- Graceful SIGINT/SIGTERM shutdown
+
 ## Authentication
 
 Set `FORGEFLOW_API_KEY` to require:
@@ -101,7 +113,7 @@ Copy `.env.example` to `.env` and configure the providers you intend to use.
 | OpenRouter | `OPENROUTER_API_KEY` | text |
 | Google | `GOOGLE_API_KEY` | text |
 | NVIDIA | `NVIDIA_API_KEY` | text |
-| fal.ai | `FAL_KEY` | image/video/audio queue submission |
+| fal.ai | `FAL_KEY` | image/video/audio queue submission + optional polling |
 | Mock | none | development |
 
 Provider adapters intentionally remain behind a common interface so additional providers can be added without changing MCP tool contracts.
@@ -140,6 +152,12 @@ Provider adapters intentionally remain behind a common interface so additional p
 
 Provider/model support is capability-dependent; a tool being present does not imply every provider implements every operation.
 
+## Provider routing and health
+
+`auto` and `fallback` can move to another compatible provider after an execution failure. `free-first` prioritizes providers configured in `FORGEFLOW_FREE_PROVIDERS`; `quality` prioritizes `FORGEFLOW_QUALITY_PROVIDERS`.
+
+ForgeFlow tracks success/failure counts, consecutive failures and rolling latency per provider. Providers with repeated recent failures are temporarily deprioritized. Health is exposed by `/health` without exposing API keys.
+
 ## OpenCode
 
 See [`examples/opencode.jsonc`](examples/opencode.jsonc).
@@ -156,6 +174,8 @@ See [`examples/mcp-client.ts`](examples/mcp-client.ts). It uses the official MCP
 docker compose up --build -d
 ```
 
+The image runs as the non-root `node` user and includes a container health check against `/health`.
+
 ## Development
 
 ```bash
@@ -165,13 +185,11 @@ npm test
 npm run build
 ```
 
-## Routing
-
-`auto` chooses the normal provider order. `free-first` prioritizes providers configured in `FORGEFLOW_FREE_PROVIDERS`. `quality` prioritizes `FORGEFLOW_QUALITY_PROVIDERS`. `fallback` and `auto` continue to the next candidate when a provider fails.
+CI validates all three supported Node major versions (20, 22 and 24) and performs a Docker build + health smoke test.
 
 ## Security
 
-See [`SECURITY.md`](SECURITY.md). API keys are read from environment variables and are never part of the MCP tool schema.
+See [`SECURITY.md`](SECURITY.md). API keys are read from environment variables and are never part of the MCP tool schema. Review the production deployment guidance before exposing the HTTP endpoint to the public internet.
 
 ## License
 
