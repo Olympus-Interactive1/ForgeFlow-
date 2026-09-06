@@ -5,9 +5,10 @@ import * as z from 'zod/v4';
 import { ModelRouter } from './core/router.js';
 import { ProviderRegistry } from './core/provider-registry.js';
 import { discoverProviders } from './core/discovery.js';
+import { MediaPipeline } from './core/media-pipeline.js';
 import { falProvider, googleProvider, mockProvider, nvidiaProvider, openRouterProvider } from './providers/index.js';
 import { WorkflowEngine } from './workflows/index.js';
-import type { Capability } from './core/types.js';
+import type { Capability, MediaOperation } from './core/types.js';
 
 const VERSION = '0.7.0';
 const registry = new ProviderRegistry().register(openRouterProvider).register(googleProvider).register(nvidiaProvider).register(falProvider).register(mockProvider);
@@ -26,6 +27,7 @@ const router = new ModelRouter({
   })
 });
 const workflows = new WorkflowEngine(router);
+const pipeline = new MediaPipeline(router);
 
 export function getForgeFlowHealth() {
   return { status: 'ok', service: 'forgeflow-mcp', version: VERSION, freeOnly: router.isFreeOnly(), providers: router.getHealth() };
@@ -42,9 +44,15 @@ export function createForgeFlowServer() {
     mode: z.enum(['auto', 'free-first', 'quality', 'fallback']).optional(), metadata: z.record(z.string(), z.unknown()).optional()
   };
   const mediaCommon = { ...common, metadata: z.record(z.string(), z.unknown()).optional() };
+  const capabilities = ['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding'] as const;
+  const operations = [
+    'text_generate', 'image_generate', 'image_edit', 'image_analyze', 'image_upscale',
+    'video_generate', 'video_image_to_video', 'video_extend', 'video_analyze',
+    'audio_generate', 'tts', 'stt'
+  ] as const;
 
   server.registerTool('forgeflow_discover', { description: 'Discover provider models, capabilities, pricing eligibility, and routing metadata. The router uses this catalog to select compatible models automatically.', inputSchema: z.object({}) }, async () => ({ content: [{ type: 'text' as const, text: JSON.stringify(await discoverProviders(registry.all(), freeOnly)) }] }));
-  server.registerTool('forgeflow_route', { description: 'Route a supported request through ForgeFlow. Model selection is capability-aware and falls back across compatible models/providers.', inputSchema: { capability: z.enum(['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding']), ...common } }, async args => routeTool(args.capability, args));
+  server.registerTool('forgeflow_route', { description: 'Route a supported request through ForgeFlow. Model selection is capability-aware and falls back across compatible models/providers.', inputSchema: { capability: z.enum(capabilities), ...common } }, async args => routeTool(args.capability, args));
   server.registerTool('forgeflow_image_generate', { description: 'Generate an image using the best discovered compatible model across configured providers.', inputSchema: common }, args => routeTool('image', { ...args, metadata: { ...args.metadata, operation: 'image_generate' } }));
   server.registerTool('forgeflow_image_edit', { description: 'Edit an image using the best discovered compatible model across configured providers.', inputSchema: common }, args => routeTool('image', { ...args, metadata: { ...args.metadata, operation: 'image_edit' } }));
   server.registerTool('forgeflow_image_analyze', { description: 'Analyze an image using a discovered vision-capable model.', inputSchema: common }, args => routeTool('image', { ...args, prompt: args.prompt ?? 'Analyze the supplied image.', metadata: { ...args.metadata, operation: 'image_analyze' } }));
@@ -56,6 +64,31 @@ export function createForgeFlowServer() {
   server.registerTool('forgeflow_audio_tts', { description: 'Convert text to speech using a discovered compatible model.', inputSchema: common }, args => routeTool('tts', { ...args, metadata: { ...args.metadata, operation: 'tts' } }));
   server.registerTool('forgeflow_audio_stt', { description: 'Transcribe speech using a discovered compatible model.', inputSchema: common }, args => routeTool('stt', { ...args, metadata: { ...args.metadata, operation: 'stt' } }));
   server.registerTool('forgeflow_audio_generate', { description: 'Generate music or sound effects using a discovered compatible model.', inputSchema: common }, args => routeTool('audio', { ...args, metadata: { ...args.metadata, operation: 'audio_generate' } }));
+
+  server.registerTool('forgeflow_media_pipeline', {
+    description: 'Run a sequential, provider-neutral media pipeline. Steps may consume the previous media asset, enabling image-to-video and other chained workflows.',
+    inputSchema: {
+      steps: z.array(z.object({
+        operation: z.enum(operations),
+        capability: z.enum(capabilities),
+        prompt: z.string().optional(),
+        model: z.string().optional(),
+        input: z.unknown().optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
+        inputFromPrevious: z.boolean().optional(),
+      })).min(1),
+    },
+  }, async args => ({
+    content: [{ type: 'text' as const, text: JSON.stringify(await pipeline.runAssetChain(args.steps as Array<{
+      operation: MediaOperation;
+      capability: Capability;
+      prompt?: string;
+      model?: string;
+      input?: unknown;
+      metadata?: Record<string, unknown>;
+      inputFromPrevious?: boolean;
+    }>)) }],
+  }));
 
   server.registerTool('forgeflow_create_ad', { description: 'Run an image + copy advertising workflow using compatible routed models.', inputSchema: { brief: z.string(), imageModel: z.string().optional(), copyModel: z.string().optional() } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.createAd(args)) }] }));
   server.registerTool('forgeflow_social_video', { description: 'Run a social video workflow using compatible routed models.', inputSchema: { brief: z.string(), durationSeconds: z.number().positive().max(600).optional() } }, async args => ({ content: [{ type: 'text', text: JSON.stringify(await workflows.socialVideo(args)) }] }));
