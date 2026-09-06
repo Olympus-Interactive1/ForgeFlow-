@@ -22,13 +22,20 @@ const router = new ModelRouter({
 });
 const workflows = new WorkflowEngine(router);
 
-async function routeTool(capability: Capability, args: { prompt?: string; input?: unknown; model?: string; provider?: string; mode?: 'auto' | 'free-first' | 'quality' | 'fallback' }) {
+export function getForgeFlowHealth() {
+  return { status: 'ok', service: 'forgeflow-mcp', version: '0.2.0', providers: router.getHealth() };
+}
+
+async function routeTool(capability: Capability, args: { prompt?: string; input?: unknown; model?: string; provider?: string; mode?: 'auto' | 'free-first' | 'quality' | 'fallback'; metadata?: Record<string, unknown> }) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(await router.route({ capability, ...args })) }] };
 }
 
 export function createForgeFlowServer() {
   const server = new McpServer({ name: 'forgeflow-mcp', version: '0.2.0' });
-  const common = { prompt: z.string().optional(), input: z.unknown().optional(), model: z.string().optional(), provider: z.string().optional(), mode: z.enum(['auto', 'free-first', 'quality', 'fallback']).optional() };
+  const common = {
+    prompt: z.string().optional(), input: z.unknown().optional(), model: z.string().optional(), provider: z.string().optional(),
+    mode: z.enum(['auto', 'free-first', 'quality', 'fallback']).optional(), metadata: z.record(z.string(), z.unknown()).optional()
+  };
 
   server.registerTool('forgeflow_route', { description: 'Route any supported request through ForgeFlow.', inputSchema: { capability: z.enum(['text', 'image', 'video', 'audio', 'stt', 'tts', 'embedding']), ...common } }, async args => routeTool(args.capability, args));
   server.registerTool('forgeflow_image_generate', { description: 'Generate an image.', inputSchema: common }, args => routeTool('image', args));
