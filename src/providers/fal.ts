@@ -55,20 +55,33 @@ function buildInput(request: ModelRequest, operation: Operation): Record<string,
   return input;
 }
 
+function mediaFile(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
 function normalizeResult(result: unknown, requestId: string, operation: Operation): Record<string, unknown> {
   const object = result && typeof result === 'object' ? result as Record<string, unknown> : {};
-  const candidates = [object.image, object.video, object.audio, object.file].filter(Boolean);
-  const media = candidates.find(value => value && typeof value === 'object') as Record<string, unknown> | undefined;
+  const mediaCandidates: unknown[] = [
+    object.image,
+    object.video,
+    object.audio,
+    object.file,
+    ...(Array.isArray(object.images) ? object.images : []),
+    ...(Array.isArray(object.videos) ? object.videos : []),
+    ...(Array.isArray(object.audio_files) ? object.audio_files : [])
+  ];
+  const media = mediaCandidates.map(mediaFile).find(Boolean);
   const url = typeof media?.url === 'string' ? media.url :
     typeof object.audio === 'string' ? object.audio :
     typeof object.url === 'string' ? object.url : undefined;
+  const mimeType = typeof media?.content_type === 'string' ? media.content_type : undefined;
 
   return {
     requestId,
     operation,
     status: 'completed',
     ...(url ? { url } : {}),
-    ...(media?.content_type ? { mimeType: media.content_type } : {}),
+    ...(mimeType ? { mimeType } : {}),
     result
   };
 }
@@ -87,10 +100,7 @@ export const falProvider: Provider = {
     const metadata = metadataOf(request);
 
     const submitted = await requestJson<FalSubmit>(`${base}/${model}`, {
-      method: 'POST',
-      timeoutMs: context.timeoutMs,
-      headers,
-      body: JSON.stringify(input)
+      method: 'POST', timeoutMs: context.timeoutMs, headers, body: JSON.stringify(input)
     });
 
     const wait = metadata.waitForResult !== false;
@@ -109,9 +119,7 @@ export const falProvider: Provider = {
 
     while (Date.now() < deadline) {
       const status = await requestJson<FalStatus>(`${base}/${model}/requests/${submitted.request_id}/status`, {
-        method: 'GET',
-        timeoutMs: Math.min(context.timeoutMs ?? 60_000, 15_000),
-        headers
+        method: 'GET', timeoutMs: Math.min(context.timeoutMs ?? 60_000, 15_000), headers
       });
       lastStatus = status.status;
 
@@ -135,10 +143,7 @@ export const falProvider: Provider = {
       output: { requestId: submitted.request_id, status: lastStatus, operation, model },
       provider: 'fal', model,
       metadata: {
-        requestId: submitted.request_id,
-        operation,
-        pending: true,
-        timedOut: true,
+        requestId: submitted.request_id, operation, pending: true, timedOut: true,
         pollUrl: `${base}/${model}/requests/${submitted.request_id}/status`
       }
     };
