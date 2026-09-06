@@ -32,5 +32,8 @@
     "vitest": "^3.2.0"
   },
   "publishConfig": { "access": "public" },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/Olympus-Interactive1/ForgeFlow-.git" },
+  "bugs": { "url": "https://github.com/Olympus-Interactive1/ForgeFlow-/issues" },
+  "homepage": "https://github.com/Olympus-Interactive1/ForgeFlow-"
 }
