@@ -2,7 +2,7 @@
 
 Universal, provider-agnostic MCP server and AI media orchestration layer.
 
-ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect through stdio or remote Streamable HTTP. The MCP TypeScript SDK v2 is the current stable SDK line and supports servers, clients, stdio, and Streamable HTTP. citeturn0search0turn0search10
+ForgeFlow is **not tied to OpenCode**. Any MCP-compatible host can connect through stdio or remote Streamable HTTP.
 
 ## What is included
 
@@ -79,7 +79,7 @@ npm run dev:http
 
 The MCP endpoint defaults to `http://localhost:8787/mcp` and the health endpoint is `/health`.
 
-The HTTP server is stateless by design. The MCP SDK v2 provides a Node Streamable HTTP transport with explicit stateless and stateful modes; ForgeFlow currently uses stateless mode so each HTTP request is independently handled. citeturn0search1
+The HTTP server uses the MCP SDK's stateless Streamable HTTP transport. It creates a fresh MCP server/transport pair per request, which keeps the remote endpoint simple and horizontally deployable.
 
 ## Authentication
 
@@ -126,11 +126,11 @@ Provider/model support is capability-dependent; a tool being present does not im
 
 See [`examples/opencode.jsonc`](examples/opencode.jsonc).
 
-OpenCode supports both local MCP processes and remote MCP servers; its remote configuration uses a URL and optional HTTP headers. citeturn0search3turn0search14
+OpenCode can connect to ForgeFlow as a remote MCP server using the Streamable HTTP endpoint and an Authorization header.
 
 ## Generic MCP client
 
-See [`examples/mcp-client.ts`](examples/mcp-client.ts). The official MCP client SDK uses `StreamableHTTPClientTransport` for HTTP connections. citeturn0search7
+See [`examples/mcp-client.ts`](examples/mcp-client.ts). It uses the official MCP client SDK's Streamable HTTP transport.
 
 ## Docker
 
