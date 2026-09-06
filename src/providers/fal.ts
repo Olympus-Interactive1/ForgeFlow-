@@ -14,13 +14,14 @@ const DEFAULT_MODELS: Record<Operation, string> = {
   image_edit: 'fal-ai/playground-v25/image-to-image',
   image_upscale: 'fal-ai/esrgan',
   video_generate: 'fal-ai/ltx-2.3/text-to-video',
-  video_image_to_video: 'fal-ai/kling-video/v3/standard/image-to-video',
+  video_image_to_video: 'fal-ai/ltx-2.3/image-to-video',
   video_extend: 'fal-ai/ltx-2.3/extend-video',
   audio_generate: 'fal-ai/stable-audio-25/text-to-audio',
   tts: 'fal-ai/chatterbox/text-to-speech',
   stt: 'fal-ai/speech-to-text'
 };
 
+const SUPPORTED_OPERATIONS = new Set<Operation>(Object.keys(DEFAULT_MODELS) as Operation[]);
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 function metadataOf(request: ModelRequest): Record<string, unknown> {
@@ -44,14 +45,12 @@ function buildInput(request: ModelRequest, operation: Operation): Record<string,
   const source = typeof request.input === 'object' && request.input ? request.input as Record<string, unknown> : {};
   const input = { ...source };
   if (request.prompt && input.prompt === undefined) input.prompt = request.prompt;
-
   if (operation === 'tts' && input.text === undefined && request.prompt) input.text = request.prompt;
   if (operation === 'stt' && input.audio_url === undefined && typeof source.url === 'string') input.audio_url = source.url;
   if (operation === 'image_edit' && input.image_url === undefined && typeof source.url === 'string') input.image_url = source.url;
   if (operation === 'image_upscale' && input.image_url === undefined && typeof source.url === 'string') input.image_url = source.url;
   if (operation === 'video_image_to_video' && input.image_url === undefined && typeof source.url === 'string') input.image_url = source.url;
   if (operation === 'video_extend' && input.video_url === undefined && typeof source.url === 'string') input.video_url = source.url;
-
   return input;
 }
 
@@ -62,10 +61,7 @@ function mediaFile(value: unknown): Record<string, unknown> | undefined {
 function normalizeResult(result: unknown, requestId: string, operation: Operation): Record<string, unknown> {
   const object = result && typeof result === 'object' ? result as Record<string, unknown> : {};
   const mediaCandidates: unknown[] = [
-    object.image,
-    object.video,
-    object.audio,
-    object.file,
+    object.image, object.video, object.audio, object.file,
     ...(Array.isArray(object.images) ? object.images : []),
     ...(Array.isArray(object.videos) ? object.videos : []),
     ...(Array.isArray(object.audio_files) ? object.audio_files : [])
@@ -77,18 +73,19 @@ function normalizeResult(result: unknown, requestId: string, operation: Operatio
   const mimeType = typeof media?.content_type === 'string' ? media.content_type : undefined;
 
   return {
-    requestId,
-    operation,
-    status: 'completed',
-    ...(url ? { url } : {}),
-    ...(mimeType ? { mimeType } : {}),
-    result
+    requestId, operation, status: 'completed',
+    ...(url ? { url } : {}), ...(mimeType ? { mimeType } : {}), result
   };
 }
 
 export const falProvider: Provider = {
   id: 'fal',
   capabilities: ['image', 'video', 'audio', 'stt', 'tts'],
+  supports(request) {
+    const operation = metadataOf(request).operation;
+    if (typeof operation === 'string') return SUPPORTED_OPERATIONS.has(operation as Operation);
+    return ['image', 'video', 'audio', 'stt', 'tts'].includes(request.capability);
+  },
   async execute(request: ModelRequest, context: ProviderContext): Promise<ModelResponse> {
     if (!context.apiKey) throw new Error('FAL_KEY is required');
 
@@ -105,11 +102,8 @@ export const falProvider: Provider = {
 
     const wait = metadata.waitForResult !== false;
     if (!wait) {
-      return {
-        output: { requestId: submitted.request_id, status: 'queued', operation, model },
-        provider: 'fal', model,
-        metadata: { requestId: submitted.request_id, operation, status: 'queued' }
-      };
+      return { output: { requestId: submitted.request_id, status: 'queued', operation, model }, provider: 'fal', model,
+        metadata: { requestId: submitted.request_id, operation, status: 'queued' } };
     }
 
     const maxWaitMs = Number(metadata.maxWaitMs ?? 300_000);
@@ -122,30 +116,19 @@ export const falProvider: Provider = {
         method: 'GET', timeoutMs: Math.min(context.timeoutMs ?? 60_000, 15_000), headers
       });
       lastStatus = status.status;
-
       if (status.status === 'COMPLETED') {
         const result = await requestJson<unknown>(`${base}/${model}/requests/${submitted.request_id}`, {
           method: 'GET', timeoutMs: context.timeoutMs, headers
         });
-        return {
-          output: normalizeResult(result, submitted.request_id, operation),
-          provider: 'fal', model,
-          metadata: { requestId: submitted.request_id, operation, status: status.status }
-        };
+        return { output: normalizeResult(result, submitted.request_id, operation), provider: 'fal', model,
+          metadata: { requestId: submitted.request_id, operation, status: status.status } };
       }
-      if (status.status === 'FAILED' || status.status === 'CANCELLED') {
-        throw new Error(`fal request ${submitted.request_id} ended with status ${status.status}`);
-      }
+      if (status.status === 'FAILED' || status.status === 'CANCELLED') throw new Error(`fal request ${submitted.request_id} ended with status ${status.status}`);
       await sleep(pollMs);
     }
 
-    return {
-      output: { requestId: submitted.request_id, status: lastStatus, operation, model },
-      provider: 'fal', model,
-      metadata: {
-        requestId: submitted.request_id, operation, pending: true, timedOut: true,
-        pollUrl: `${base}/${model}/requests/${submitted.request_id}/status`
-      }
-    };
+    return { output: { requestId: submitted.request_id, status: lastStatus, operation, model }, provider: 'fal', model,
+      metadata: { requestId: submitted.request_id, operation, pending: true, timedOut: true,
+        pollUrl: `${base}/${model}/requests/${submitted.request_id}/status` } };
   }
 };
