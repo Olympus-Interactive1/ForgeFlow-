@@ -8,7 +8,7 @@ const response = (provider: string): ModelResponse => ({
 });
 
 function provider(id: string, execute: Provider['execute']): Provider {
-  return { id, capabilities: ['text'], execute };
+  return { id, free: true, capabilities: ['text'], execute };
 }
 
 describe('v0.4 release hardening', () => {
