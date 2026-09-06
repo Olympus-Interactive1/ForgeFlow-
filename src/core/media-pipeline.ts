@@ -39,7 +39,7 @@ export class MediaPipeline {
         ? MediaPipeline.assetInput(previousAsset)
         : step.input;
       const result = await this.run({ ...step, input });
-      if (step.inputFromPrevious || result.asset) {
+      if (result.asset) {
         previousAsset = MediaPipeline.requireAsset(result);
       }
       results.push(result);
