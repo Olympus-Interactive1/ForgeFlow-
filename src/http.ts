@@ -35,18 +35,14 @@ setInterval(() => {
 }, Math.max(rateWindowMs, 10_000)).unref();
 
 const httpServer = createServer(async (req, res) => {
-  if (req.url === '/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
     res.end(JSON.stringify(getForgeFlowHealth()));
     return;
   }
-  if (req.url !== endpoint) {
-    res.writeHead(404, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found' }));
-    return;
-  }
+  if (req.url !== endpoint) { res.writeHead(404); res.end('Not Found'); return; }
   if (apiKey && req.headers.authorization !== `Bearer ${apiKey}`) {
-    res.writeHead(401, { 'content-type': 'application/json' });
+    res.writeHead(401, { 'content-type': 'application/json', 'www-authenticate': 'Bearer' });
     res.end(JSON.stringify({ error: 'Unauthorized' }));
     return;
   }
@@ -56,19 +52,15 @@ const httpServer = createServer(async (req, res) => {
     res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
     return;
   }
-
-  const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  const server = createForgeFlowServer();
-  await server.connect(transport);
-  await transport.handleRequest(req, res);
+  try {
+    const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const server = createForgeFlowServer();
+    await server.connect(transport);
+    await transport.handleRequest(req, res);
+  } catch (error) {
+    if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+    if (!res.writableEnded) res.end(JSON.stringify({ error: String(error) }));
+  }
 });
 
-httpServer.listen(port, host, () => {
-  console.error(`ForgeFlow MCP HTTP server listening on http://${host}:${port}${endpoint}`);
-});
-
-const shutdown = async () => {
-  httpServer.close();
-};
-process.once('SIGINT', shutdown);
-process.once('SIGTERM', shutdown);
+httpServer.listen(port, host, () => console.error(`ForgeFlow MCP listening on http://${host}:${port}${endpoint}`));
