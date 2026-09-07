@@ -90,7 +90,7 @@ export function createForgeFlowServer() {
     }>)) }],
   }));
 
-  server.registerTool('forgeflow_create_ad', { description: 'Run an image + copy advertising workflow using compatible routed models.', inputSchema: { brief: z.string(), imageModel: z.string().optional(), copyModel: z.string().optional() } }, async args => ({ content: [{ type: 'text', type: 'text' as const, text: JSON.stringify(await workflows.createAd(args)) }] }));
+  server.registerTool('forgeflow_create_ad', { description: 'Run an image + copy advertising workflow using compatible routed models.', inputSchema: { brief: z.string(), imageModel: z.string().optional(), copyModel: z.string().optional() } }, async args => ({ content: [{ type: 'text' as const, text: JSON.stringify(await workflows.createAd(args)) }] }));
   server.registerTool('forgeflow_social_video', { description: 'Run a social video workflow using compatible routed models.', inputSchema: { brief: z.string(), durationSeconds: z.number().positive().max(600).optional() } }, async args => ({ content: [{ type: 'text' as const, text: JSON.stringify(await workflows.socialVideo(args)) }] }));
   server.registerTool('forgeflow_full_media', { description: 'Run multiple media capabilities in parallel using compatible routed models.', inputSchema: { brief: z.string(), outputs: z.array(z.enum(['image', 'video', 'audio', 'tts'])).min(1) } }, async args => ({ content: [{ type: 'text' as const, text: JSON.stringify(await workflows.fullMedia(args)) }] }));
 
