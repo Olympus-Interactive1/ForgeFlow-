@@ -1,4 +1,4 @@
-import type { DiscoveredModel, ModelRequest, ModelResponse, Provider, ProviderContext } from '../core/types.js';
+import type { DiscoveredModel, MediaOperation, ModelRequest, ModelResponse, Provider, ProviderContext } from '../core/types.js';
 import { requestBytes, requestJson } from '../core/http.js';
 import { extractTextContent } from '../core/response.js';
 import { normalizeMediaAsset } from '../core/media-asset.js';
@@ -8,7 +8,7 @@ interface OpenRouterMessage { content?: unknown; reasoning_content?: unknown; }
 interface OpenRouterResponse { choices?: Array<{ message?: OpenRouterMessage }>; model?: string; usage?: Record<string, number>; }
 interface OpenRouterModel { id?: string; pricing?: { prompt?: string; completion?: string }; architecture?: { input_modalities?: string[]; output_modalities?: string[] }; }
 interface OpenRouterModelsResponse { data?: OpenRouterModel[]; }
-interface ImageResponse { data?: Array<{ b64_json?: string; url?: string; media_type?: string }>; }
+interface ImageResponse { data?: Array<{ b64_json?: string; url?: string; media_type?: string }>; usage?: Record<string, number>; }
 interface VideoModel { id?: string; pricing_skus?: Record<string, string>; supported_frame_images?: string[]; }
 interface VideoModelsResponse { data?: VideoModel[]; }
 interface VideoJob { id?: string; status?: string; polling_url?: string; unsigned_urls?: string[]; usage?: Record<string, number>; error?: string; }
@@ -17,7 +17,6 @@ const timeout = () => Number(process.env.FORGEFLOW_PROVIDER_TIMEOUT_MS ?? 120000
 const mediaJobTimeout = () => Number(process.env.FORGEFLOW_MEDIA_JOB_TIMEOUT_MS ?? 10 * 60_000);
 const mediaJobPollInterval = () => Number(process.env.FORGEFLOW_MEDIA_JOB_POLL_MS ?? 2000);
 const freePrice = (value?: string) => value === '0' || value === '0.0' || value === '0.00';
-const allPricesFree = (prices: Record<string, string> | undefined) => { const values = Object.values(prices ?? {}); return values.length > 0 && values.every(freePrice); };
 const trustedFreeMediaModels = () => new Set((process.env.FORGEFLOW_TRUSTED_FREE_MEDIA_MODELS ?? '').split(',').map(value => value.trim()).filter(Boolean));
 
 /**
@@ -30,11 +29,19 @@ export function isVerifiedFreeMediaModel(modelId: string, pricingSkus?: Record<s
   return trustedFreeMediaModels().has(modelId);
 }
 
+function operationsForModel(input: string[], output: string[]): MediaOperation[] {
+  const operations: MediaOperation[] = [];
+  if (output.includes('text') || (!output.length && input.includes('text'))) operations.push('text_generate');
+  if (output.includes('image')) operations.push('image_generate', 'image_edit');
+  if (input.includes('image')) operations.push('image_analyze');
+  return operations;
+}
+
 export const openRouterProvider: Provider = {
   id: 'openrouter', free: true, capabilities: ['text', 'image', 'video'],
   async discoverModels(context?: ProviderContext): Promise<DiscoveredModel[]> {
     const key = context?.apiKey ?? process.env.OPENROUTER_API_KEY;
-    if (!key) return [{ id: 'openrouter/free', capabilities: ['text'], free: true, quality: 60 }];
+    if (!key) return [{ id: 'openrouter/free', capabilities: ['text'], free: true, quality: 60, metadata: { operations: ['text_generate'] } }];
     const base = (context?.baseUrl ?? process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '');
     const headers: Record<string, string> = { Authorization: `Bearer ${key}`, 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
     const [catalog, images, videos] = await Promise.all([
@@ -45,19 +52,23 @@ export const openRouterProvider: Provider = {
     const result: DiscoveredModel[] = [];
     for (const model of catalog.data ?? []) {
       if (!model.id) continue;
-      const input = model.architecture?.input_modalities ?? [], output = model.architecture?.output_modalities ?? [], capabilities: string[] = [];
-      if (output.includes('text') || (!output.length && input.includes('text'))) capabilities.push('text');
-      if (input.includes('image') || output.includes('image')) capabilities.push('image');
-      const free = freePrice(model.pricing?.prompt) && freePrice(model.pricing?.completion);
-      if (capabilities.length) result.push({ id: model.id, capabilities: capabilities as DiscoveredModel['capabilities'], free, quality: free ? 60 : 75 });
+      const input = model.architecture?.input_modalities ?? [], output = model.architecture?.output_modalities ?? [];
+      const operations = operationsForModel(input, output);
+      const capabilities = new Set<DiscoveredModel['capabilities'][number]>();
+      if (operations.includes('text_generate')) capabilities.add('text');
+      if (operations.includes('image_generate') || operations.includes('image_analyze')) capabilities.add('image');
+      if (capabilities.size) {
+        const free = freePrice(model.pricing?.prompt) && freePrice(model.pricing?.completion);
+        result.push({ id: model.id, capabilities: [...capabilities], free, quality: free ? 60 : 75, metadata: { operations } });
+      }
     }
     for (const model of images.data ?? []) if (model.id) {
       const verifiedFree = isVerifiedFreeMediaModel(model.id, model.pricing_skus);
-      result.push({ id: model.id, capabilities: ['image'], free: verifiedFree, quality: 85, eligibility: verifiedFree ? 'free' : 'unknown', metadata: { endpoint: 'images', eligibility: verifiedFree ? 'free' : 'unknown', eligibilityReason: verifiedFree ? 'explicitly-trusted-free-media-model' : 'OpenRouter media pricing metadata does not prove account-level credit-free access' } });
+      result.push({ id: model.id, capabilities: ['image'], free: verifiedFree, quality: 85, eligibility: verifiedFree ? 'free' : 'unknown', metadata: { endpoint: 'images', operations: ['image_generate', 'image_edit'], eligibility: verifiedFree ? 'free' : 'unknown', eligibilityReason: verifiedFree ? 'explicitly-trusted-free-media-model' : 'OpenRouter media pricing metadata does not prove account-level credit-free access' } });
     }
     for (const model of videos.data ?? []) if (model.id) {
       const verifiedFree = isVerifiedFreeMediaModel(model.id, model.pricing_skus);
-      result.push({ id: model.id, capabilities: ['video'], free: verifiedFree, quality: 90, eligibility: verifiedFree ? 'free' : 'unknown', metadata: { endpoint: 'videos', frameImages: model.supported_frame_images ?? [], eligibility: verifiedFree ? 'free' : 'unknown', eligibilityReason: verifiedFree ? 'explicitly-trusted-free-media-model' : 'OpenRouter media pricing metadata does not prove account-level credit-free access' } });
+      result.push({ id: model.id, capabilities: ['video'], free: verifiedFree, quality: 90, eligibility: verifiedFree ? 'free' : 'unknown', metadata: { endpoint: 'videos', operations: ['video_generate', 'video_image_to_video'], frameImages: model.supported_frame_images ?? [], eligibility: verifiedFree ? 'free' : 'unknown', eligibilityReason: verifiedFree ? 'explicitly-trusted-free-media-model' : 'OpenRouter media pricing metadata does not prove account-level credit-free access' } });
     }
     return result;
   },
@@ -68,10 +79,15 @@ export const openRouterProvider: Provider = {
     const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://github.com/Olympus-Interactive1/ForgeFlow-', 'X-Title': 'ForgeFlow MCP' };
     if (operation === 'image_generate' || operation === 'image_edit') {
       const imageOptions = (request.metadata?.imageOptions ?? {}) as Record<string, unknown>;
-      const body = await requestJson<ImageResponse>(`${base}/images`, { method: 'POST', timeoutMs: context.timeoutMs ?? timeout(), headers, body: JSON.stringify({ model, prompt: request.prompt ?? String(request.input ?? ''), ...imageOptions }) });
-      const item = body.data?.[0]; if (!item?.b64_json && !item?.url) throw new Error('OpenRouter image API returned no image');
+      const body: Record<string, unknown> = { model, prompt: request.prompt ?? String(request.input ?? ''), ...imageOptions };
+      if (operation === 'image_edit' && request.input) {
+        const reference = typeof request.input === 'string' ? request.input : String(request.input);
+        body.input_references = [reference];
+      }
+      const response = await requestJson<ImageResponse>(`${base}/images`, { method: 'POST', timeoutMs: context.timeoutMs ?? timeout(), headers, body: JSON.stringify(body) });
+      const item = response.data?.[0]; if (!item?.b64_json && !item?.url) throw new Error('OpenRouter image API returned no image');
       const asset = normalizeMediaAsset(item.b64_json ? { data: item.b64_json, mimeType: item.media_type ?? 'image/png' } : { url: item.url, mimeType: item.media_type ?? 'image/png' }, 'image');
-      return { output: asset, asset, provider: 'openrouter', model, metadata: { free: isVerifiedFreeMediaModel(model), endpoint: 'images' } };
+      return { output: asset, asset, provider: 'openrouter', model, usage: response.usage, metadata: { free: isVerifiedFreeMediaModel(model), endpoint: 'images' } };
     }
     if (operation === 'video_generate' || operation === 'video_image_to_video') {
       const options = (request.metadata?.videoOptions ?? {}) as Record<string, unknown>, body: Record<string, unknown> = { model, prompt: request.prompt ?? String(request.input ?? ''), ...options };
