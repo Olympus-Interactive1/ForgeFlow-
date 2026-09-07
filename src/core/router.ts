@@ -89,6 +89,7 @@ export class ModelRouter {
 
   private async select(request: ModelRequest, mode: RouteMode): Promise<Candidate[]> {
     const now = Date.now();
+    const requestedOperation = typeof request.metadata?.operation === 'string' ? request.metadata.operation : undefined;
     const candidates: Candidate[] = [];
     for (const provider of this.providers) {
       if (request.provider && provider.id !== request.provider) continue;
@@ -97,6 +98,7 @@ export class ModelRouter {
       try {
         const models = await this.discover(provider);
         const compatible = models.filter(model => model.capabilities.includes(request.capability)
+          && (!requestedOperation || !Array.isArray(model.metadata?.operations) || model.metadata.operations.includes(requestedOperation))
           && (!this.freeOnly || (model.free && model.eligibility !== 'paid'))
           && (!request.model || model.id === request.model));
         for (const model of compatible) candidates.push({ provider, model });
