@@ -31,6 +31,8 @@ const operationCapabilities: Record<MediaOperation, ModelRequest['capability']> 
   stt: 'stt',
 };
 
+export const MAX_PIPELINE_STEPS = 32;
+
 export class MediaPipeline {
   constructor(private readonly router: ModelRouter) {}
 
@@ -47,6 +49,11 @@ export class MediaPipeline {
   }
 
   async runAssetChain(steps: AssetPipelineStep[]): Promise<ModelResponse[]> {
+    if (steps.length === 0) throw new Error('Media pipeline must contain at least one step');
+    if (steps.length > MAX_PIPELINE_STEPS) {
+      throw new Error(`Media pipeline cannot contain more than ${MAX_PIPELINE_STEPS} steps`);
+    }
+
     const results: ModelResponse[] = [];
     let previousAsset: MediaAsset | undefined;
 
@@ -65,8 +72,10 @@ export class MediaPipeline {
   }
 
   static validateStep(step: PipelineStep): void {
-    if (operationCapabilities[step.operation] !== step.capability) {
-      throw new Error(`Pipeline operation ${step.operation} requires ${operationCapabilities[step.operation]} capability`);
+    const requiredCapability = operationCapabilities[step.operation];
+    if (!requiredCapability) throw new Error(`Unsupported pipeline operation: ${String(step.operation)}`);
+    if (requiredCapability !== step.capability) {
+      throw new Error(`Pipeline operation ${step.operation} requires ${requiredCapability} capability`);
     }
   }
 
