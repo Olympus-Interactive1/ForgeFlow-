@@ -3,6 +3,7 @@ import { MAX_MEDIA_ASSET_DATA_CHARS, MAX_MEDIA_ASSET_URL_CHARS, assertMediaAsset
 
 describe('media asset safety limits', () => {
   const base = { kind: 'image' as const, mimeType: 'image/png', data: 'a' };
+  const urlPrefix = 'https://x.test/';
 
   it('accepts assets within the inline payload limit', () => {
     expect(() => assertMediaAsset({ ...base, data: 'a'.repeat(MAX_MEDIA_ASSET_DATA_CHARS) })).not.toThrow();
@@ -14,11 +15,18 @@ describe('media asset safety limits', () => {
   });
 
   it('accepts URLs within the length limit', () => {
-    expect(() => assertMediaAsset({ kind: 'image', mimeType: 'image/png', url: `https://x.test/${'a'.repeat(MAX_MEDIA_ASSET_URL_CHARS - 19)}` })).not.toThrow();
+    expect(() => assertMediaAsset({
+      kind: 'image',
+      mimeType: 'image/png',
+      url: urlPrefix + 'a'.repeat(MAX_MEDIA_ASSET_URL_CHARS - urlPrefix.length),
+    })).not.toThrow();
   });
 
   it('rejects oversized URLs', () => {
-    expect(() => assertMediaAsset({ kind: 'image', mimeType: 'image/png', url: `https://x.test/${'a'.repeat(MAX_MEDIA_ASSET_URL_CHARS)}` }))
-      .toThrow(`Media asset URL exceeds ${MAX_MEDIA_ASSET_URL_CHARS} characters`);
+    expect(() => assertMediaAsset({
+      kind: 'image',
+      mimeType: 'image/png',
+      url: urlPrefix + 'a'.repeat(MAX_MEDIA_ASSET_URL_CHARS - urlPrefix.length + 1),
+    })).toThrow(`Media asset URL exceeds ${MAX_MEDIA_ASSET_URL_CHARS} characters`);
   });
 });
