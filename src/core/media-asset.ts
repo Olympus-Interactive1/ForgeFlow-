@@ -20,6 +20,9 @@ export interface MediaAssetEnvelope {
   model?: string;
 }
 
+export const MAX_MEDIA_ASSET_DATA_CHARS = 32 * 1024 * 1024;
+export const MAX_MEDIA_ASSET_URL_CHARS = 2048;
+
 const MEDIA_MIME_PREFIX: Record<MediaAssetKind, string> = {
   image: 'image/',
   video: 'video/',
@@ -39,6 +42,12 @@ export function assertMediaAsset(value: unknown): asserts value is MediaAsset {
   const hasData = typeof asset.data === 'string' && asset.data.length > 0;
   if (!hasUrl && !hasData) throw new Error('Media asset must contain either url or data');
   if (hasUrl && hasData) throw new Error('Media asset cannot contain both url and data');
+  if (hasData && asset.data.length > MAX_MEDIA_ASSET_DATA_CHARS) {
+    throw new Error(`Media asset data exceeds ${MAX_MEDIA_ASSET_DATA_CHARS} characters`);
+  }
+  if (hasUrl && asset.url.length > MAX_MEDIA_ASSET_URL_CHARS) {
+    throw new Error(`Media asset URL exceeds ${MAX_MEDIA_ASSET_URL_CHARS} characters`);
+  }
   for (const field of ['width', 'height', 'durationSeconds']) {
     if (asset[field] !== undefined && (typeof asset[field] !== 'number' || !Number.isFinite(asset[field]) || asset[field] < 0)) {
       throw new Error(`Invalid media asset ${field}`);
