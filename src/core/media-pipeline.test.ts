@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MediaPipeline } from './media-pipeline.js';
+import { MAX_PIPELINE_STEPS, MediaPipeline } from './media-pipeline.js';
 import type { ModelResponse } from './types.js';
 
 const image = {
@@ -35,6 +35,27 @@ describe('MediaPipeline', () => {
 
     await expect(pipeline.run({ capability: 'text', operation: 'image_generate', prompt: 'test' }))
       .rejects.toThrow('requires image capability');
+    expect(route).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unsupported operation before routing', async () => {
+    const route = vi.fn();
+    const pipeline = new MediaPipeline({ route } as never);
+
+    await expect(pipeline.run({ capability: 'image', operation: 'unsupported' as never }))
+      .rejects.toThrow('Unsupported pipeline operation');
+    expect(route).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty and oversized chains', async () => {
+    const route = vi.fn().mockResolvedValue(response('ok'));
+    const pipeline = new MediaPipeline({ route } as never);
+
+    await expect(pipeline.runAssetChain([])).rejects.toThrow('at least one step');
+    await expect(pipeline.runAssetChain(Array.from({ length: MAX_PIPELINE_STEPS + 1 }, () => ({
+      capability: 'text' as const,
+      operation: 'text_generate' as const,
+    })))).rejects.toThrow(`more than ${MAX_PIPELINE_STEPS} steps`);
     expect(route).not.toHaveBeenCalled();
   });
 
